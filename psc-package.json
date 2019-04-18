@@ -1,0 +1,12 @@
+{
+  "name": "nerg",
+  "set": "master",
+  "source": "https://github.com/rubenmoor/package-sets.git",
+  "depends": [
+    "console",
+    "drawing",
+    "prelude",
+    "pseudo-random",
+    "sequences"
+  ]
+}
