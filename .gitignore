@@ -1,2 +1,4 @@
 .psc-package
+.psc-ide-port
 output
+node_modules
