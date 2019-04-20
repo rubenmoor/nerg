@@ -3,11 +3,11 @@ module Grid.Internal where
 import Data.Array (filter, fromFoldable, replicate, zip, (..))
 import Data.Function (($), (<<<))
 import Data.Functor (map)
-import Data.Maybe (Maybe)
-import Data.Sequence (Seq)
-import Data.Sequence as Seq
+import Data.Sequence.Extended (Seq)
+import Data.Sequence.Extended as Seq
+import Data.Traversable (foldl)
 import Data.Tuple (Tuple(..), fst)
-import Prelude (div, mod, (*), (+), (<))
+import Prelude (div, mod, (*), (+), (-), (<))
 import Random.PseudoRandom (mkSeed, randoms)
 
 -- minimal cell state: dead or alive
@@ -15,7 +15,18 @@ import Random.PseudoRandom (mkSeed, randoms)
 type CellState = Boolean
 
 -- the grid is stored in a 1D-sequence
-type Grid = Seq CellState
+type Grid = Seq CellInfo
+
+type CellInfo =
+  { nNeighbors :: Int
+  , cellState :: CellState
+  }
+
+defaultCellInfo :: CellInfo
+defaultCellInfo =
+  { nNeighbors: 0
+  , cellState: false
+  }
 
 -- single cell for efficient rendering of changes only
 type Cell =
@@ -26,9 +37,6 @@ type Cell =
 
 type GridUpdate = Seq Cell
 
-defaultCellState :: Boolean
-defaultCellState = false
-
 gridWidth :: Int
 gridWidth = 100
 
@@ -37,17 +45,20 @@ gridHeight = 100
 
 emptyGrid :: Grid
 emptyGrid =
-  Seq.fromFoldable $ replicate (gridWidth * gridHeight) defaultCellState
+  Seq.fromFoldable $ replicate (gridWidth * gridHeight) defaultCellInfo
 
 randomGrid :: Grid
 randomGrid =
-  let rs = randoms (gridWidth * gridHeight) (mkSeed 0)
-      cs = map (\x -> if x < 0.2 then true else false) rs
-  in  Seq.fromFoldable cs
+    foldl acc emptyGrid randomLs
+  where
+    acc :: Grid -> Tuple Int CellState -> Grid
+    acc grid (Tuple i c) = if c then gridSet grid i c else grid
 
--- calculate the 1D-index from x-y-coordinates
-coordsToIndex :: Int -> Int -> Int
-coordsToIndex x y = gridWidth * y + x
+    randomLs :: Array (Tuple Int CellState)
+    randomLs =
+      let rnds = randoms (gridWidth * gridHeight) (mkSeed 0)
+          rndStates = map (\x -> if x < 0.2 then true else false) rnds
+      in  zip (0 .. (gridWidth * gridHeight - 1)) rndStates
 
 -- calculate the x-y-coordinates from the 1D-index
 indexToCoords :: Int -> Tuple Int Int
@@ -56,19 +67,42 @@ indexToCoords i =
       y = i `div` gridWidth
   in  Tuple x y
 
--- get the cell state at given coordinates
-gridAt :: Grid -> Int -> Int -> Maybe CellState
-gridAt grid x y = coordsToIndex x y `Seq.index` grid
-
 -- set the cell state at given coordinates
-gridSet :: Grid -> Int -> Int -> CellState -> Grid
-gridSet grid x y cell = Seq.replace cell (coordsToIndex x y) grid
+gridSet :: Grid -> Int -> CellState -> Grid
+gridSet grid i newState =
+   updateNeighbors $ updateState grid
+  where
+    updateNeighbors :: Grid -> Grid
+    updateNeighbors grid' =
+        foldl (modifyNeighborCount f) grid' (neighborIndices i)
+      where
+        f = if newState then (\x -> x + 1) else (\x -> x - 1)
+
+    updateState :: Grid -> Grid
+    updateState grid' =
+      Seq.modify grid' i $ \oldCell ->
+        oldCell { cellState = newState }
+
+modifyNeighborCount :: (Int -> Int) -> Grid -> Int -> Grid
+modifyNeighborCount f grid i =
+  Seq.modify grid i $ \oldCell ->
+    oldCell { nNeighbors = f oldCell.nNeighbors }
 
 -- create a grid update that comprises all cells
 wholeGridUpdate :: Grid -> GridUpdate
 wholeGridUpdate grid =
   let indexedGrid = zip (0 .. (gridWidth * gridHeight)) $ fromFoldable grid
-      activeIndices = filter (\(Tuple _ v) -> v) indexedGrid
+      activeIndices = filter (\(Tuple _ info) -> info.cellState) indexedGrid
       activeCoords = map (indexToCoords <<< fst) activeIndices
       activeCells = map (\(Tuple x y) -> {x, y, state: true}) activeCoords
   in  Seq.fromFoldable activeCells
+
+neighborIndices :: Int -> Array Int
+neighborIndices i =
+  -- tbd. diagonals
+  -- tbd. neighbors at margins
+  let l = i - 1
+      r = i + 1
+      t = i - gridWidth
+      b = i + gridWidth
+  in  [l, r, t, b]
