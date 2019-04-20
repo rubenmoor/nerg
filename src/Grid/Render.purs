@@ -4,9 +4,10 @@ import Color (black, white)
 import Data.Foldable (foldMap)
 import Data.Int (toNumber)
 import Data.Monoid ((<>))
+import Data.Tuple (Tuple(..))
 import Graphics.Drawing (Drawing, fillColor, filled, rectangle)
-import Grid.Internal (Grid, GridUpdate, Cell, wholeGridUpdate)
-import Prelude ((*), (+), (/))
+import Grid.Internal (Cell, Grid, GridUpdate, gridWidth, wholeGridUpdate)
+import Prelude (div, mod, (*), (+), (/))
 
 cellMargin :: Number
 cellMargin = 1.0
@@ -27,12 +28,19 @@ redrawGrid grid =
 drawUpdate :: GridUpdate -> Drawing
 drawUpdate = foldMap drawCell
 
+indexToCoords :: Int -> Tuple Int Int
+indexToCoords i =
+  let x = i `mod` gridWidth
+      y = i `div` gridWidth
+  in  Tuple x y
+
 drawCell :: Cell -> Drawing
 drawCell cell =
-  let left = toNumber cell.x * scalingFactor + cellMargin / 2.0
-      top = toNumber cell.y * scalingFactor + cellMargin / 2.0
+  let Tuple x y = indexToCoords cell.i
+      left = toNumber x * scalingFactor + cellMargin / 2.0
+      top = toNumber y * scalingFactor + cellMargin / 2.0
       rect = rectangle left top scalingFactor scalingFactor
       color = case cell.state of
-        true -> white
+        true  -> white
         false -> black
   in  filled (fillColor color) rect

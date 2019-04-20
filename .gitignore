@@ -1,5 +1,6 @@
 .psc-package
 public/app.js
 .psc-ide-port
+.psci_modules
 output
 node_modules
