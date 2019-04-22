@@ -14,7 +14,7 @@ import Graphics.Canvas (Context2D, getCanvasElementById, getContext2D, translate
 import Graphics.Drawing as Drawing
 import Grid (nextState)
 import Grid.Draw (drawUpdate, redrawGrid)
-import Grid.Internal (Grid, gridHeight, gridWidth)
+import Grid.Internal (Grid)
 import Halogen (Component, ComponentDSL, ComponentHTML, SubscribeStatus(..), action, lifecycleComponent, liftEffect, request, subscribe)
 import Halogen.HTML (HTML, button, div_, text)
 import Halogen.HTML as HTML
@@ -67,8 +67,8 @@ render state = div_
   [ div_
     [ HTML.canvas
       [ P.id_ canvasId
-      , P.width gridWidth
-      , P.height gridHeight
+      , P.width 1000
+      , P.height 1000
       ]
     ]
   , div_
