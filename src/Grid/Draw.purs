@@ -1,4 +1,4 @@
-module Grid.Render where
+module Grid.Draw where
 
 import Color (black, white)
 import Data.Foldable (foldMap)

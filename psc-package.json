@@ -5,6 +5,7 @@
   "depends": [
     "console",
     "drawing",
+    "halogen",
     "prelude",
     "pseudo-random",
     "sequences",
