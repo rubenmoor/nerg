@@ -1,6 +1,7 @@
 module Grid.Internal where
 
 import Data.Array.Extended (enumerate, filter, modifyAt, replicate)
+import Data.Eq ((==))
 import Data.Function (($))
 import Data.Functor (map)
 import Data.Maybe (fromMaybe)
@@ -99,12 +100,14 @@ wholeGridUpdate grid =
 neighborIndices :: Int -> Array Int
 neighborIndices i =
   let length = gridWidth * gridHeight
-      n = i - gridWidth `mod` length
-      nw = n - 1 `mod` length
-      ne = n + 1 `mod` length
-      w = i - 1 `mod` length
-      e = i + 1 `mod` length
+      leftMargin = if i `mod` gridWidth == 0 then gridWidth else 0
+      rightMargin = if i + 1 `mod` gridWidth == 0 then gridWidth else 0
+      n  = i - gridWidth `mod` length
+      nw = n - 1 + leftMargin `mod` length
+      ne = n + 1 - rightMargin `mod` length
+      w = i - 1 + leftMargin `mod` length
+      e = i + 1 - rightMargin `mod` length
       s = i + gridWidth `mod` length
-      sw = s - 1 `mod` length
-      se = s + 1 `mod` length
+      sw = s - 1 + leftMargin `mod` length
+      se = s + 1 - rightMargin `mod` length
   in  [nw, n, ne, w, e, sw, s, se]

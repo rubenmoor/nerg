@@ -6,6 +6,7 @@
     "console",
     "drawing",
     "halogen",
+    "js-timers",
     "prelude",
     "pseudo-random",
     "sequences",
