@@ -4,9 +4,9 @@ import Data.Array.Extended (enumerate, filter, modifyAt, replicate)
 import Data.Eq ((==))
 import Data.Function (($))
 import Data.Functor (map)
+import Data.List (List)
+import Data.List as List
 import Data.Maybe (fromMaybe)
-import Data.Sequence (Seq)
-import Data.Sequence as Seq
 import Data.Traversable (foldl)
 import Data.Tuple (Tuple(..), fst)
 import Prelude (mod, (*), (+), (-), (<))
@@ -36,10 +36,10 @@ type Cell =
   , state :: CellState
   }
 
-type GridUpdate = Seq Cell
+type GridUpdate = List Cell
 
 emptyGridUpdate :: GridUpdate
-emptyGridUpdate = Seq.empty
+emptyGridUpdate = List.Nil
 
 gridWidth :: Int
 gridWidth = 100
@@ -61,7 +61,7 @@ randomGrid =
     randomLs :: Array (Tuple Int CellState)
     randomLs =
       let rnds = randoms (gridWidth * gridHeight) (mkSeed 0)
-          rndStates = map (\x -> if x < 0.2 then true else false) rnds
+          rndStates = map (\x -> if x < 0.4 then true else false) rnds
       in  enumerate (gridWidth * gridHeight) rndStates
 
 -- set the cell state at given coordinates
@@ -79,11 +79,11 @@ gridSet grid i newState =
     updateState grid' =
       fromMaybe grid' $ modifyAt i (\c -> c { cellState = newState }) grid'
 
-modifyNeighborCount :: (Int -> Int) -> Grid -> Int -> Grid
-modifyNeighborCount f grid i =
-    fromMaybe grid $ modifyAt i updateCell grid
-  where
-    updateCell c = c { nNeighbors = f c.nNeighbors }
+    modifyNeighborCount :: (Int -> Int) -> Grid -> Int -> Grid
+    modifyNeighborCount f grid' i' =
+        fromMaybe grid' $ modifyAt i' updateCell grid'
+      where
+        updateCell c = c { nNeighbors = f c.nNeighbors }
 
 -- create a grid update that comprises all cells
 wholeGridUpdate :: Grid -> GridUpdate
@@ -92,7 +92,7 @@ wholeGridUpdate grid =
       activeIndices = filter (\(Tuple _ info) -> info.cellState) indexedGrid
       activeCoords = map fst activeIndices
       activeCells = map (\i -> {i, state: true}) activeCoords
-  in  Seq.fromFoldable activeCells
+  in  List.fromFoldable activeCells
 
 -- logically, neighbor indices are easier to compute based on the
 -- 2D-x-y-coordinates, but the index-based calculation is computationally

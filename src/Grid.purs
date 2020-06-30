@@ -5,7 +5,7 @@ module Grid
 import Data.Array (foldl)
 import Data.Array.Extended (enumerate)
 import Data.BooleanAlgebra ((||))
-import Data.Sequence as Seq
+import Data.List (List (..))
 import Data.Eq ((==))
 import Data.Tuple (Tuple(..))
 import Grid.Internal (CellInfo, Grid, GridUpdate, emptyGridUpdate, gridHeight, gridSet, gridWidth)
@@ -27,6 +27,6 @@ nextState oldGrid =
       where
         change :: Boolean -> Tuple GridUpdate Grid
         change state =
-          let update' = Seq.cons {i, state} update
+          let update' = Cons {i, state} update
               grid'   = gridSet grid i state
           in  Tuple update' grid'
