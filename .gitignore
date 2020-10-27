@@ -1,6 +1,5 @@
-.psc-package
-public/app.js
-.psc-ide-port
-.psci_modules
-output
-node_modules
+/output/
+/.spago
+/public/app.js
+/.psci_modules/
+.purs-repl
