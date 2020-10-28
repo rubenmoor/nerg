@@ -2,16 +2,18 @@ module Main where
 
 import Prelude
 
-import Data.Int (round)
+import Data.Int (round, toNumber)
 import Data.Maybe (fromJust)
+import Data.Tuple (Tuple(..))
 import Drawing as Drawing
 import Effect (Effect)
 import Effect.Ref (modify_, new, read, write)
+import Events (gamePeriod, gridBeat, onEvent, onEventE)
 import Graphics.Canvas (getCanvasHeight, getCanvasWidth, getContext2D, setCanvasHeight, setCanvasWidth)
 import Graphics.Drawing (render)
 import Partial.Unsafe (unsafePartial)
-import Signal (Signal, runSignal, (~>))
-import Signal.Time (every)
+import Signal (get) as Signal
+import Signal.DOM (MouseButton(..), mouseButtonPressed, mousePos, animationFrame, wheelY) as Signal
 import Unsafe.Coerce (unsafeCoerce)
 import Web.DOM.Document (createElement)
 import Web.DOM.Element (clientHeight, clientWidth, toNode)
@@ -19,14 +21,7 @@ import Web.DOM.Node (appendChild)
 import Web.HTML (window)
 import Web.HTML.HTMLDocument (body, toDocument)
 import Web.HTML.HTMLElement (toElement)
-import Web.HTML.Window (document, requestAnimationFrame)
-
--- game speed in steps per second
-gameSpeed :: Number
-gameSpeed = 1.0
-
-gamePeriod :: Number
-gamePeriod = 1000.0 / gameSpeed
+import Web.HTML.Window (document)
 
 main :: Effect Unit
 main = do
