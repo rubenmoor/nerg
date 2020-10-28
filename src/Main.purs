@@ -29,59 +29,88 @@ main = do
   doc <- document w
   mBody <- body doc
   let b = unsafePartial fromJust mBody
-  el <- createElement "canvas" $ toDocument doc
-  _ <- appendChild (toNode el) (toNode $ toElement b)
+  canvas <- createElement "canvas" $ toDocument doc
+  _ <- appendChild (toNode canvas) (toNode $ toElement b)
+  let canvasElement = unsafeCoerce canvas
+  canvasWidth <- getCanvasWidth canvasElement
+  canvasHeight <- getCanvasHeight canvasElement
 
   -- | globals
   refFrameCount <- new 0
   refFrameRate <- new 0
-  let pollFrameRate = gridBeat ~> \_ -> do
-        c <- read refFrameCount
-        write (c `div` round gamePeriod) refFrameRate
-        write 0 refFrameCount
+  onEvent gridBeat $ \_ -> do
+    c <- read refFrameCount
+    write (round(1000.0 * toNumber c / gamePeriod)) refFrameRate
+    write 0 refFrameCount
 
-  refViewX <- new 0.4
+  -- zoomFactor: number of pixels per cell
+  refZoomFactor <- new 200
+  onEventE (Signal.wheelY canvas) $ \deltaY ->
+    modify_ (\x -> max 1 $ x + round deltaY) refZoomFactor
+
+  -- cell coordinates of canvas center
+  refViewX <- new 0.5
   refViewY <- new 0.5
-  refZoomFactor <- new 100
+  refMousePos <- new $ Tuple 0 0
+  refGridPos <- new $ Tuple 0 0
 
-  runSignal pollFrameRate
+  sMouse1 <- Signal.mouseButtonPressed Signal.MouseLeftButton
+  sMousePos <- Signal.mousePos
 
-  let canvas = unsafeCoerce el
-  displayWidth <- clientWidth el
-  displayHeight <- clientHeight el
+  onEvent sMouse1 $ \t -> when t $ do
+    {x: x, y: y} <- Signal.get sMousePos
+    write (Tuple x y) refMousePos
 
-  -- TODO: move to some resize event, and swap displayWidth/Height with canvasWidth/Height
-  -- resize if display size has changed
-  canvasWidth <- getCanvasWidth canvas
-  canvasHeight <- getCanvasHeight canvas
-  unless (canvasWidth == displayWidth) $ setCanvasWidth canvas displayWidth
-  unless (canvasHeight == displayHeight) $ setCanvasHeight canvas displayHeight
-  ctx <- getContext2D canvas
+  onEvent sMousePos $ \{x: x, y: y} -> do
+    -- tooltip
+    width <- clientWidth canvas
+    height <- clientHeight canvas
+    z <- toNumber <$> read refZoomFactor
+    viewX <- read refViewX
+    viewY <- read refViewY
+    let gridX = round $ (toNumber x - width / 2.0) / z - 0.5 + viewX
+        gridY = round $ (height / 2.0 - toNumber y - 0.5) / z + 0.5 - viewY
+    write (Tuple gridX gridY) refGridPos
+
+    leftButtonDown <- Signal.get sMouse1
+    when leftButtonDown $ do
+      Tuple oldX oldY <- read refMousePos
+      let deltaX = x - oldX
+          deltaY = y - oldY
+      modify_ (\x' -> x' - toNumber deltaX / z) refViewX
+      modify_ (\y' -> y' - toNumber deltaY / z) refViewY
+
+    write (Tuple x y) refMousePos
+
+  ctx <- getContext2D canvasElement
 
   let redraw = do
+        -- check if resize is necessary
+        width <- clientWidth canvas
+        height <- clientHeight canvas
+        unless (width == canvasWidth) $ setCanvasWidth canvasElement width
+        unless (height == canvasHeight) $ setCanvasHeight canvasElement height
+
         frameRate <- read refFrameRate
         viewX <- read refViewX
         viewY <- read refViewY
         zoomFactor <- read refZoomFactor
+        mousePos <- read refMousePos
+        gridPos <- read refGridPos
+
         let params :: Drawing.Params
             params =
               { frameRate: frameRate
-              , width: round canvasWidth
-              , height: round canvasHeight
+              , width: round width
+              , height: round height
               , viewX: viewX
               , viewY: viewY
               , zoomFactor: zoomFactor
+              , mousePos: mousePos
+              , gridPos: gridPos
               }
         render ctx $ Drawing.redraw params
 
-  -- redraw loop based on RAF, not meant to do anything else but to redraw the
-  -- canvas
-  let loop = do
-        redraw
-        _ <- requestAnimationFrame loop w
-        modify_ (\x -> x + 1) refFrameCount
-        pure unit
-  loop
-
-gridBeat :: Signal Number
-gridBeat = every gamePeriod
+  onEventE Signal.animationFrame $ \_ -> do
+    redraw
+    modify_ (\x -> x + 1) refFrameCount

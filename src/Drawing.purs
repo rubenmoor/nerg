@@ -24,7 +24,11 @@ type Params =
   , viewX :: Number
   , viewY :: Number
 
+  -- number of pixels per cell
   , zoomFactor :: Int
+
+  , mousePos :: Tuple Int Int
+  , gridPos :: Tuple Int Int
   }
 
 redraw :: Params -> Drawing
@@ -34,11 +38,15 @@ redraw { frameRate: frameRate
        , viewX: viewX
        , viewY: viewY
        , zoomFactor: zoomFactor
+       , mousePos: Tuple mouseX mouseY
+       , gridPos: Tuple gridX gridY
        } =
      drawBackground
   <> drawGrid
-  <> drawCoordinateLabel 10 10
+  <> drawCoordinateLabel 100 200
   <> drawCoordinateLabel (canvasWidth - 15) (canvasHeight - 15)
+  <> drawFrameRate
+  <> drawTooltip
   where
     drawBackground =
       filled (fillColor black) $ rectangle 0.0 0.0 (toNumber canvasWidth) (toNumber canvasHeight)
@@ -46,7 +54,7 @@ redraw { frameRate: frameRate
     gray = fromInt 0x919191
     drawGrid =
       let
-          style = lineWidth 1.0 <> outlineColor gray
+          style = lineWidth 0.5 <> outlineColor gray
           xIndex = floor viewX
           yIndex = floor viewY
           xFraction = viewX - toNumber xIndex
@@ -64,7 +72,7 @@ redraw { frameRate: frameRate
     drawFrameRate =
       let myFont = font sansSerif 12 mempty
           style = fillColor gray
-      in text myFont (toNumber $ canvasWidth - 20) 15.0 style (toString $ toNumber frameRate)
+      in text myFont 5.0 15.0 style $ print (int <<< s " fps") frameRate
 
     drawCoordinateLabel x y =
       let myFont = font sansSerif 16 mempty
@@ -81,3 +89,13 @@ redraw { frameRate: frameRate
           stroke1 = path [ {x: x - 5.0, y: y - 5.0}, {x: x + 5.0, y: y + 5.0}]
           stroke2 = path [ {x: x - 5.0, y: y + 5.0}, {x: x + 5.0, y: y - 5.0}]
       in  outlined style $ stroke1 <> stroke2
+
+    drawTooltip =
+      let x = toNumber mouseX
+          y = toNumber mouseY
+          myFont = font monospace 12 mempty
+          rect = rectangle (x + 15.0) (y + 5.0) 60.0 18.0
+          style = lineWidth 1.0 <> outlineColor white
+      in  text myFont (x + 16.5) (y + 16.5)
+               (fillColor white)
+               (print (s "(" <<< int <<< s "|" <<< int <<< s ")") gridX gridY)
