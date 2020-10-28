@@ -8,12 +8,14 @@ import Prelude
 import Color (black, fromInt, white)
 import Data.Array (foldMap, range)
 import Data.Int (floor, round, toNumber)
+import Data.Number.Format (toString)
 import Graphics.Drawing (Drawing, fillColor, filled, lineWidth, outlineColor, outlined, path, rectangle, text)
 import Graphics.Drawing.Font (font, sansSerif)
 import Text.Formatting (int, print, s)
 
 type Params =
-  { width :: Int
+  { frameRate :: Int
+  , width :: Int
   , height :: Int
 
   -- the coordinates of the real grid that the canvas is centered on
@@ -26,7 +28,8 @@ type Params =
   }
 
 redraw :: Params -> Drawing
-redraw { width: canvasWidth
+redraw { frameRate: frameRate
+       , width: canvasWidth
        , height: canvasHeight
        , viewX: viewX
        , viewY: viewY
@@ -40,8 +43,9 @@ redraw { width: canvasWidth
     drawBackground =
       filled (fillColor black) $ rectangle 0.0 0.0 (toNumber canvasWidth) (toNumber canvasHeight)
 
+    gray = fromInt 0x919191
     drawGrid =
-      let gray = (fromInt 0x919191)
+      let
           style = lineWidth 1.0 <> outlineColor gray
           xIndex = floor viewX
           yIndex = floor viewY
@@ -56,6 +60,11 @@ redraw { width: canvasWidth
           xLines = foldMap (toNumber >>> \x -> path [ {x: x, y: 0.0}, {x: x, y: toNumber canvasHeight} ]) xs
           yLines = foldMap (toNumber >>> \y -> path [ {x: 0.0, y: y}, {x: toNumber canvasWidth, y: y} ]) ys
       in outlined style $ xLines <> yLines
+
+    drawFrameRate =
+      let myFont = font sansSerif 12 mempty
+          style = fillColor gray
+      in text myFont (toNumber $ canvasWidth - 20) 15.0 style (toString $ toNumber frameRate)
 
     drawCoordinateLabel x y =
       let myFont = font sansSerif 16 mempty
