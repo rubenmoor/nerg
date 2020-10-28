@@ -8,9 +8,9 @@ import Prelude
 import Color (black, fromInt, white)
 import Data.Array (foldMap, range)
 import Data.Int (floor, round, toNumber)
-import Data.Number.Format (toString)
+import Data.Tuple (Tuple(..))
 import Graphics.Drawing (Drawing, fillColor, filled, lineWidth, outlineColor, outlined, path, rectangle, text)
-import Graphics.Drawing.Font (font, sansSerif)
+import Graphics.Drawing.Font (font, monospace, sansSerif)
 import Text.Formatting (int, print, s)
 
 type Params =

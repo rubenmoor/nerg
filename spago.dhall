@@ -10,7 +10,6 @@ You can edit this file as you like.
   , "drawing"
   , "effect"
   , "formatting"
-  , "numbers"
   , "psci-support"
   , "refs"
   , "signal"
