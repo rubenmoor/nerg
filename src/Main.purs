@@ -103,10 +103,10 @@ main = do
       Tuple oldX oldY <- read refMousePos
       let deltaX = x - oldX
           deltaY = y - oldY
-          maxX = toNumber $ Grid.width - 1
-          minX = toNumber $ -Grid.width
-          maxY = toNumber $ Grid.height
-          minY = toNumber $ -Grid.height + 1
+          maxX = toNumber $ Grid.width / 2 - 1
+          minX = toNumber $ -Grid.width / 2
+          maxY = toNumber $ Grid.height / 2
+          minY = toNumber $ -Grid.height / 2 + 1
       modify_ (\x' -> min maxX $ max minX $ x' - toNumber deltaX / z) refViewX
       modify_ (\y' -> min maxY $ max minY $ y' - toNumber deltaY / z) refViewY
 

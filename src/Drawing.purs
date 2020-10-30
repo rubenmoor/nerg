@@ -7,7 +7,7 @@ import Prelude
 
 import Color (black, fromInt, rgba, white)
 import Data.Array (foldMap, range)
-import Data.Int (floor, round, toNumber)
+import Data.Int (ceil, floor, round, toNumber)
 import Data.Tuple (Tuple(..))
 import Graphics.Drawing (Drawing, fillColor, filled, lineWidth, outlineColor, outlined, path, rectangle, text)
 import Graphics.Drawing.Font (font, monospace, sansSerif)
@@ -70,19 +70,27 @@ redraw { gridState: gridState
           yIndex = floor viewY -- index of first border bottom of canvas center
           xFraction = viewX - toNumber xIndex
           yFraction = viewY - toNumber yIndex
-          xOffset = (canvasWidth / 2 - round (xFraction * toNumber zoomFactor)) `mod` zoomFactor
-          yOffset = (canvasHeight / 2 - round (yFraction * toNumber zoomFactor)) `mod` zoomFactor
-          -- what is the maximum of xIndex + i -
-          nVerticalLines = canvasWidth / zoomFactor
-          nXOverflowR = round (toNumber nVerticalLines / 2.0 + viewX) - Grid.width
-          nXOverflowL = round (toNumber nVerticalLines / 2.0 - viewX) - Grid.width
-          xArray = range nXOverflowL $ nVerticalLines - nXOverflowR - 1
-          nHorizontalLines = canvasHeight / zoomFactor
-          nYOverflowT = round (toNumber nHorizontalLines / 2.0 + viewY) - Grid.height
-          nYOverflowB = round (toNumber nHorizontalLines / 2.0 - viewY) - Grid.height
-          yArray = range nYOverflowB $ nHorizontalLines - nYOverflowT - 1
-          xs = xArray <#> \i -> xOffset + i * zoomFactor
-          ys = yArray <#> \i -> yOffset + i * zoomFactor
+          leftOffset = (canvasWidth / 2 - round (xFraction * toNumber zoomFactor)) `mod` zoomFactor
+          -- rightOffset = canvasWidth - leftOffset `mod` zoomFactor
+          topOffset = (canvasHeight / 2 - round (yFraction * toNumber zoomFactor)) `mod` zoomFactor
+          -- bottomOffset = canvasHeight - topOffset `mod` zoomFactor
+          -- nXOverflowR = floor (toNumber nVerticalLines / 2.0 + viewX) - Grid.width
+          -- nXOverflowR = max 0 $ nVerticalLines - Grid.width - 1
+          -- TODO check if factor in zoom factor
+          left = canvasWidth / 2 - round ((toNumber (Grid.width / 2) + viewX) * toNumber zoomFactor)
+          right = canvasWidth / 2 - round ((toNumber (Grid.width / 2) - viewX) * toNumber zoomFactor)
+          nLeft = max 0 $ left / zoomFactor
+          nRight = max 0 $ right / zoomFactor
+          -- nOverflowL = floor (toNumber nVerticalLines / 2.0 - viewX) - Grid.width / 2
+          -- render limited grid
+          xArray = range nLeft $ canvasWidth / zoomFactor - nRight - 1
+          top = canvasHeight / 2 - round ((toNumber (Grid.height / 2) + viewY) * toNumber zoomFactor)
+          bottom = canvasHeight / 2 - round ((toNumber (Grid.height / 2) - viewY) * toNumber zoomFactor)
+          nTop = max 0 $ top / zoomFactor
+          nBottom = max 0 $ bottom / zoomFactor
+          yArray = range nTop $ canvasHeight / zoomFactor - nBottom - 1
+          xs = xArray <#> \i -> leftOffset + i * zoomFactor
+          ys = yArray <#> \i -> topOffset + i * zoomFactor
           xLines = foldMap (toNumber >>> \x -> path [ {x: x, y: 0.0}, {x: x, y: toNumber canvasHeight} ]) xs
           yLines = foldMap (toNumber >>> \y -> path [ {x: 0.0, y: y}, {x: toNumber canvasWidth, y: y} ]) ys
       in outlined style $ xLines <> yLines
@@ -128,8 +136,8 @@ redraw { gridState: gridState
                (print (s "mx: " <<< number <<< s " | my: " <<< number) mouseVX mouseVY)
     drawGridPos =
       let myFont = font monospace 12 mempty
-          x = if gridX > Grid.width - 1 || gridX < -Grid.width then "-" else show gridX
-          y = if gridY > Grid.height - 1 || gridY < -Grid.height then "-" else show gridY
+          x = if gridX > Grid.width / 2 - 1 || gridX < -Grid.width / 2 then "-" else show gridX
+          y = if gridY > Grid.height / 2 - 1 || gridY < -Grid.height / 2 then "-" else show gridY
       in  text myFont 5.0  (toNumber canvasHeight - 5.0)
                (fillColor white)
                (print (s "x: " <<< string <<< s " | y: " <<< string) x y)
