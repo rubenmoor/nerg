@@ -22,10 +22,10 @@ import Effect (Effect)
 import Effect.Random (random)
 
 width :: Int
-width = 10
+width = 2
 
 height :: Int
-height = 10
+height = 2
 
 type PlayerId = Int
 

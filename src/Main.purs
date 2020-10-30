@@ -91,9 +91,9 @@ main = do
     viewX <- read refViewX
     viewY <- read refViewY
     let gridX = floor $ (toNumber x - width / 2.0) / z + viewX
-        gridY = ceil $ (height / 2.0 - toNumber y) / z - viewY
+        gridY = floor $ (height / 2.0 - toNumber y) / z + viewY
         mouseVX = toNumber (floor $ ((toNumber x - width / 2.0) / z + viewX) * 10.0) / 10.0
-        mouseVY = toNumber (floor $ ((toNumber y - height / 2.0) / z + viewY) * 10.0) / 10.0
+        mouseVY = toNumber (floor $ ((height / 2.0 - toNumber y) / z + viewY) * 10.0) / 10.0
     write (Tuple gridX gridY) refGridPos
     write (Tuple mouseVX mouseVY) refMouseVPos
 
@@ -103,12 +103,14 @@ main = do
       Tuple oldX oldY <- read refMousePos
       let deltaX = x - oldX
           deltaY = y - oldY
-          maxX = toNumber $ Grid.width / 2 - 1
-          minX = toNumber $ -Grid.width / 2
-          maxY = toNumber $ Grid.height / 2
-          minY = toNumber $ -Grid.height / 2 + 1
-      modify_ (\x' -> min maxX $ max minX $ x' - toNumber deltaX / z) refViewX
-      modify_ (\y' -> min maxY $ max minY $ y' - toNumber deltaY / z) refViewY
+      --     maxX = toNumber $ Grid.width / 2 - 1
+      --     minX = toNumber $ -Grid.width / 2
+      --     maxY = toNumber $ Grid.height / 2
+      --     minY = toNumber $ -Grid.height / 2 + 1
+      -- modify_ (\x' -> min maxX $ max minX $ x' - toNumber deltaX / z) refViewX
+      -- modify_ (\y' -> min maxY $ max minY $ toNumber deltaY / z -  y') refViewY
+      modify_ (\x' -> x' - toNumber deltaX / z) refViewX
+      modify_ (\y' -> y' + toNumber deltaY / z) refViewY
 
     write (Tuple x y) refMousePos
 

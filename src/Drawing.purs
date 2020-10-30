@@ -7,7 +7,7 @@ import Prelude
 
 import Color (black, fromInt, rgba, white)
 import Data.Array (foldMap, range)
-import Data.Int (ceil, floor, round, toNumber)
+import Data.Int (floor, round, toNumber)
 import Data.Tuple (Tuple(..))
 import Graphics.Drawing (Drawing, fillColor, filled, lineWidth, outlineColor, outlined, path, rectangle, text)
 import Graphics.Drawing.Font (font, monospace, sansSerif)
@@ -55,6 +55,10 @@ redraw { gridState: gridState
   <> drawViewPos
   <> drawMouseViewPos
   where
+    -- | scale transform y to cartesian coordinates
+    sctr y = canvasHeight - y
+    sctr' y = toNumber canvasHeight - y
+
     drawBackground =
       filled (fillColor black) $ rectangle 0.0 0.0 (toNumber canvasWidth) (toNumber canvasHeight)
 
@@ -92,14 +96,14 @@ redraw { gridState: gridState
           xs = xArray <#> \i -> leftOffset + i * zoomFactor
           ys = yArray <#> \i -> topOffset + i * zoomFactor
           xLines = foldMap (toNumber >>> \x -> path [ {x: x, y: 0.0}, {x: x, y: toNumber canvasHeight} ]) xs
-          yLines = foldMap (toNumber >>> \y -> path [ {x: 0.0, y: y}, {x: toNumber canvasWidth, y: y} ]) ys
+          yLines = foldMap (sctr >>> toNumber >>> \y -> path [ {x: 0.0, y: y}, {x: toNumber canvasWidth, y: y} ]) ys
       in outlined style $ xLines <> yLines
 
     drawHoverFill =
       let z = toNumber zoomFactor
           cellLeft = (toNumber gridX - viewX) * z + toNumber canvasWidth / 2.0
-          cellTop = toNumber canvasHeight / 2.0 - (toNumber gridY + viewY) * z
-      in  filled (fillColor darkgray) $ rectangle cellLeft cellTop (z - 1.0) (z - 1.0)
+          cellTop = sctr' $ (toNumber gridY - viewY) * z + toNumber canvasHeight / 2.0
+      in  filled (fillColor darkgray) $ rectangle cellLeft cellTop (z - 1.0) (1.0 - z)
 
     drawFrameRate =
       let myFont = font sansSerif 12 mempty
@@ -123,17 +127,20 @@ redraw { gridState: gridState
       in  outlined style $ stroke1 <> stroke2
 
     drawTooltip = mempty
+
     drawViewPos =
       let myFont = font monospace 12 mempty
           toPrecision x = toNumber (floor $ x * 10.0) / 10.0
-      in  text myFont 5.0  (toNumber canvasHeight - 25.0)
+      in  text myFont 5.0 (toNumber canvasHeight - 25.0)
                (fillColor white)
                (print (s "vx: " <<< number <<< s " | vy: " <<< number) (toPrecision viewX) (toPrecision viewY))
+
     drawMouseViewPos =
       let myFont = font monospace 12 mempty
-      in  text myFont 5.0  (toNumber canvasHeight - 45.0)
+      in  text myFont 5.0 (toNumber canvasHeight - 45.0)
                (fillColor white)
                (print (s "mx: " <<< number <<< s " | my: " <<< number) mouseVX mouseVY)
+
     drawGridPos =
       let myFont = font monospace 12 mempty
           x = if gridX > Grid.width / 2 - 1 || gridX < -Grid.width / 2 then "-" else show gridX
