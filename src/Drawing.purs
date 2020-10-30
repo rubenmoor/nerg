@@ -29,6 +29,7 @@ type Params =
   , zoomFactor :: Int
 
   , mousePos :: Tuple Int Int
+  , mouseVPos :: Tuple Number Number
   , gridPos :: Tuple Int Int
   }
 
@@ -39,6 +40,7 @@ redraw { gridState: gridState
        , viewPos: Tuple viewX viewY
        , zoomFactor: zoomFactor
        , mousePos: Tuple mouseX mouseY
+       , mouseVPos: Tuple mouseVX mouseVY
        , gridPos: Tuple gridX gridY
        } =
      drawBackground
@@ -51,6 +53,7 @@ redraw { gridState: gridState
   <> drawTooltip
   <> drawGridPos
   <> drawViewPos
+  <> drawMouseViewPos
   where
     drawBackground =
       filled (fillColor black) $ rectangle 0.0 0.0 (toNumber canvasWidth) (toNumber canvasHeight)
@@ -114,10 +117,15 @@ redraw { gridState: gridState
     drawTooltip = mempty
     drawViewPos =
       let myFont = font monospace 12 mempty
-          toPrecision x = toNumber (round $ x * 10.0) / 10.0
-      in  text myFont 5.0  (toNumber canvasHeight - 35.0)
+          toPrecision x = toNumber (floor $ x * 10.0) / 10.0
+      in  text myFont 5.0  (toNumber canvasHeight - 25.0)
                (fillColor white)
                (print (s "vx: " <<< number <<< s " | vy: " <<< number) (toPrecision viewX) (toPrecision viewY))
+    drawMouseViewPos =
+      let myFont = font monospace 12 mempty
+      in  text myFont 5.0  (toNumber canvasHeight - 45.0)
+               (fillColor white)
+               (print (s "mx: " <<< number <<< s " | my: " <<< number) mouseVX mouseVY)
     drawGridPos =
       let myFont = font monospace 12 mempty
           x = if gridX > Grid.width - 1 || gridX < -Grid.width then "-" else show gridX

@@ -2,14 +2,14 @@ module Main where
 
 import Prelude
 
-import Data.Int (round, toNumber)
+import Data.Int (ceil, floor, round, toNumber)
 import Data.Maybe (fromJust)
 import Data.Tuple (Tuple(..))
 import Drawing as Drawing
 import Effect (Effect)
 import Effect.Ref (modify_, new, read, write)
 import Events (gamePeriod, gridBeat, onEvent, onEventE)
-import Graphics.Canvas (getCanvasHeight, getCanvasWidth, getContext2D, setCanvasHeight, setCanvasWidth)
+import Graphics.Canvas (CanvasElement, getCanvasHeight, getCanvasWidth, getContext2D, setCanvasHeight, setCanvasWidth)
 import Graphics.Drawing (render)
 import Grid (randomGrid)
 import Grid (width, height) as Grid
@@ -41,7 +41,8 @@ main = do
   let b = unsafePartial fromJust mBody
   canvas <- createElement "canvas" $ toDocument doc
   _ <- appendChild (toNode canvas) (toNode $ toElement b)
-  let canvasElement = unsafeCoerce canvas
+  let canvasElement = unsafeCoerce canvas :: CanvasElement
+  ctx <- getContext2D canvasElement
 
   -- | globals
 
@@ -72,6 +73,7 @@ main = do
   refViewX <- new 0.5
   refViewY <- new 0.5
   refMousePos <- new $ Tuple 0 0
+  refMouseVPos <- new $ Tuple 0.0 0.0
   refGridPos <- new $ Tuple 0 0
 
   sMouse1 <- Signal.mouseButtonPressed Signal.MouseLeftButton
@@ -88,9 +90,12 @@ main = do
     z <- toNumber <$> read refZoomFactor
     viewX <- read refViewX
     viewY <- read refViewY
-    let gridX = round $ (toNumber x - width / 2.0) / z - 0.5 + viewX
-        gridY = round $ (height / 2.0 - toNumber y) / z + 0.5 - viewY
+    let gridX = floor $ (toNumber x - width / 2.0) / z + viewX
+        gridY = ceil $ (height / 2.0 - toNumber y) / z - viewY
+        mouseVX = toNumber (floor $ ((toNumber x - width / 2.0) / z + viewX) * 10.0) / 10.0
+        mouseVY = toNumber (floor $ ((toNumber y - height / 2.0) / z + viewY) * 10.0) / 10.0
     write (Tuple gridX gridY) refGridPos
+    write (Tuple mouseVX mouseVY) refMouseVPos
 
     -- drag mouse to scroll
     leftButtonDown <- Signal.get sMouse1
@@ -98,16 +103,14 @@ main = do
       Tuple oldX oldY <- read refMousePos
       let deltaX = x - oldX
           deltaY = y - oldY
-          maxX = toNumber $ Grid.width + 1
+          maxX = toNumber $ Grid.width - 1
           minX = toNumber $ -Grid.width
-          maxY = toNumber $ Grid.height + 1
-          minY = toNumber $ -Grid.height
+          maxY = toNumber $ Grid.height
+          minY = toNumber $ -Grid.height + 1
       modify_ (\x' -> min maxX $ max minX $ x' - toNumber deltaX / z) refViewX
       modify_ (\y' -> min maxY $ max minY $ y' - toNumber deltaY / z) refViewY
 
     write (Tuple x y) refMousePos
-
-  ctx <- getContext2D canvasElement
 
   let redraw = do
         Tuple gridState _ <- read refGrid
@@ -124,6 +127,7 @@ main = do
         viewY <- read refViewY
         zoomFactor <- read refZoomFactor
         mousePos <- read refMousePos
+        mouseVPos <- read refMouseVPos
         gridPos <- read refGridPos
 
         let params :: Drawing.Params
@@ -134,6 +138,7 @@ main = do
               , viewPos: Tuple viewX viewY
               , zoomFactor: zoomFactor
               , mousePos: mousePos
+              , mouseVPos: mouseVPos
               , gridPos: gridPos
               }
         render ctx $ Drawing.redraw params
