@@ -24,8 +24,7 @@ gridBeat :: Signal Number
 gridBeat = every gamePeriod
 
 onEvent :: forall a. Signal a -> (a -> Effect Unit) -> Effect Unit
-onEvent s f =
-  runSignal $ f <$> s
+onEvent s f = runSignal $ f <$> s
 
 onEventE :: forall a. Effect (Signal a) -> (a -> Effect Unit) -> Effect Unit
 onEventE m f = m >>= flip onEvent f
