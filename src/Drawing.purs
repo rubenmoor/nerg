@@ -74,29 +74,28 @@ redraw { gridState: gridState
           yIndex = floor viewY -- index of first border bottom of canvas center
           xFraction = viewX - toNumber xIndex
           yFraction = viewY - toNumber yIndex
-          leftOffset = (canvasWidth / 2 - round (xFraction * toNumber zoomFactor)) `mod` zoomFactor
-          -- rightOffset = canvasWidth - leftOffset `mod` zoomFactor
-          topOffset = (canvasHeight / 2 - round (yFraction * toNumber zoomFactor)) `mod` zoomFactor
-          -- bottomOffset = canvasHeight - topOffset `mod` zoomFactor
-          -- nXOverflowR = floor (toNumber nVerticalLines / 2.0 + viewX) - Grid.width
-          -- nXOverflowR = max 0 $ nVerticalLines - Grid.width - 1
-          -- TODO check if factor in zoom factor
-          left = canvasWidth / 2 - round ((toNumber (Grid.width / 2) + viewX) * toNumber zoomFactor)
-          right = canvasWidth / 2 - round ((toNumber (Grid.width / 2) - viewX) * toNumber zoomFactor)
-          nLeft = max 0 $ left / zoomFactor
-          nRight = max 0 $ right / zoomFactor
-          -- nOverflowL = floor (toNumber nVerticalLines / 2.0 - viewX) - Grid.width / 2
+          leftOffset = round (toNumber canvasWidth / 2.0 - xFraction * toNumber zoomFactor) `mod` zoomFactor
+          bottomOffset = round (toNumber canvasHeight / 2.0 - yFraction * toNumber zoomFactor) `mod` zoomFactor
+          widthC = toNumber canvasWidth / toNumber zoomFactor
+          halfWidthC = widthC / 2.0
+          nLeft = halfWidthC - (toNumber (Grid.width / 2) + viewX)
+          nRight = halfWidthC - (toNumber (Grid.width / 2) - viewX)
           -- render limited grid
-          xArray = range nLeft $ canvasWidth / zoomFactor - nRight - 1
-          top = canvasHeight / 2 - round ((toNumber (Grid.height / 2) + viewY) * toNumber zoomFactor)
-          bottom = canvasHeight / 2 - round ((toNumber (Grid.height / 2) - viewY) * toNumber zoomFactor)
-          nTop = max 0 $ top / zoomFactor
-          nBottom = max 0 $ bottom / zoomFactor
-          yArray = range nTop $ canvasHeight / zoomFactor - nBottom - 1
+          xArray = range (max 0 $ floor nLeft) $ min (floor widthC) $ floor $ widthC - nRight
+
+          heightC = toNumber canvasHeight / toNumber zoomFactor
+          halfHeightC = heightC / 2.0
+          nTop = halfHeightC - (toNumber (Grid.height / 2) - viewY)
+          nBottom = halfHeightC - (toNumber (Grid.height / 2) + viewY)
+          yArray = range (max 0 $ floor nBottom) $ min (floor heightC) $ floor $ heightC - nTop
           xs = xArray <#> \i -> leftOffset + i * zoomFactor
-          ys = yArray <#> \i -> topOffset + i * zoomFactor
-          xLines = foldMap (toNumber >>> \x -> path [ {x: x, y: 0.0}, {x: x, y: toNumber canvasHeight} ]) xs
-          yLines = foldMap (sctr >>> toNumber >>> \y -> path [ {x: 0.0, y: y}, {x: toNumber canvasWidth, y: y} ]) ys
+          ys = yArray <#> \i -> bottomOffset + i * zoomFactor
+          bottom = min (toNumber canvasHeight) $ toNumber canvasHeight - nBottom * toNumber zoomFactor
+          top = max 0.0 $ nTop * toNumber zoomFactor
+          left = max 0.0 $ nLeft * toNumber zoomFactor
+          right = min (toNumber canvasWidth) $ toNumber canvasWidth - nRight * toNumber zoomFactor
+          xLines = foldMap (toNumber >>> \x -> path [ {x: x, y: bottom}, {x: x, y: top} ]) xs
+          yLines = foldMap (sctr >>> toNumber >>> \y -> path [ {x: left, y: y}, {x: right, y: y} ]) ys
       in outlined style $ xLines <> yLines
 
     drawHoverFill =

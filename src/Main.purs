@@ -2,7 +2,7 @@ module Main where
 
 import Prelude
 
-import Data.Int (ceil, floor, round, toNumber)
+import Data.Int (floor, round, toNumber)
 import Data.Maybe (fromJust)
 import Data.Tuple (Tuple(..))
 import Drawing as Drawing
@@ -12,7 +12,6 @@ import Events (gamePeriod, gridBeat, onEvent, onEventE)
 import Graphics.Canvas (CanvasElement, getCanvasHeight, getCanvasWidth, getContext2D, setCanvasHeight, setCanvasWidth)
 import Graphics.Drawing (render)
 import Grid (randomGrid)
-import Grid (width, height) as Grid
 import Partial.Unsafe (unsafePartial)
 import Signal (get) as Signal
 import Signal.DOM (MouseButton(..), mouseButtonPressed, mousePos, animationFrame, wheelY) as Signal
