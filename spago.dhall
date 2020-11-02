@@ -10,6 +10,8 @@ You can edit this file as you like.
   , "drawing"
   , "effect"
   , "formatting"
+  , "lists"
+  , "math"
   , "psci-support"
   , "refs"
   , "signal"

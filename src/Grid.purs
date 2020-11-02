@@ -2,12 +2,14 @@ module Grid
   ( width
   , height
   , PlayerId
-  , CellState
-  , CellOwner
+  , CellState (..)
+  , CellOwner (..)
   , GridState
   , Neighbors
   , emptyGrid
   , randomGrid
+  , foldM_
+  , forLoopM_
   ) where
 
 import Prelude
@@ -15,17 +17,17 @@ import Prelude
 import Control.Monad.ST (run)
 import Data.Array (replicate)
 import Data.Array.ST (freeze, modify, poke, thaw)
-import Data.Foldable (class Foldable, foldr)
-import Data.List.Lazy (List, foldM, replicateM, zipWith, (..))
+import Data.Foldable (class Foldable, foldM, foldr)
+import Data.List.Lazy (replicateM, zipWith, (..))
 import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Effect.Random (random)
 
 width :: Int
-width = 4
+width = 10
 
 height :: Int
-height = 4
+height = 10
 
 type PlayerId = Int
 
@@ -50,10 +52,10 @@ mapM_ func xs = foldr acc (pure unit) xs
 forM_ :: forall m t a b. Monad m => Foldable t => t a -> (a -> m b) -> m Unit
 forM_ = flip mapM_
 
-foldM_ :: forall a m. Monad m => (a -> m Unit) -> List a -> m Unit
+foldM_ :: forall a m f. Monad m => Foldable f => (a -> m Unit) -> f a -> m Unit
 foldM_ action xs = foldM (\_ x -> action x) unit xs
 
-forLoopM_ :: forall a m. Monad m => List a -> (a -> m Unit) -> m Unit
+forLoopM_ :: forall a m f. Monad m => Foldable f => f a -> (a -> m Unit) -> m Unit
 forLoopM_ = flip foldM_
 
 randomGrid :: Number -> Effect (Tuple GridState Neighbors)

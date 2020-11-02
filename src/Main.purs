@@ -12,6 +12,8 @@ import Events (gamePeriod, gridBeat, onEvent, onEventE)
 import Graphics.Canvas (CanvasElement, getCanvasHeight, getCanvasWidth, getContext2D, setCanvasHeight, setCanvasWidth)
 import Graphics.Drawing (render)
 import Grid (randomGrid)
+import Grid as Grid
+import Math ((%))
 import Partial.Unsafe (unsafePartial)
 import Signal (get) as Signal
 import Signal.DOM (MouseButton(..), mouseButtonPressed, mousePos, animationFrame, wheelY) as Signal
@@ -25,7 +27,8 @@ import Web.HTML.HTMLElement (toElement)
 import Web.HTML.Window (document)
 
 -- [x] hover highlight current cell
--- [ ] implement grid with fixed dimensions and maximum zoom
+-- [x] grid with fixed dimensions and maximum zoom
+-- [x] toroidal render
 -- [ ] live mode: click-activate based cgol
 -- [ ] random start distribution
 -- [ ] insert custom mode: select flexible size area for custom shape insert
@@ -57,7 +60,10 @@ main = do
     write 0 refFrameCount
 
   -- zoomFactor: number of pixels per cell
-  refZoomFactor <- new 100
+
+  -- JS Array: 44/45 fps, crash when decreasing zoom
+  -- Lazy list/lists: 4/5 fps, no crash
+  refZoomFactor <- new 7
   onEventE (Signal.wheelY canvas) $ \deltaY -> do
     z <- read refZoomFactor
     width <- getCanvasWidth canvasElement
@@ -102,14 +108,15 @@ main = do
       Tuple oldX oldY <- read refMousePos
       let deltaX = x - oldX
           deltaY = y - oldY
-      --     maxX = toNumber $ Grid.width / 2 - 1
-      --     minX = toNumber $ -Grid.width / 2
-      --     maxY = toNumber $ Grid.height / 2
-      --     minY = toNumber $ -Grid.height / 2 + 1
-      -- modify_ (\x' -> min maxX $ max minX $ x' - toNumber deltaX / z) refViewX
-      -- modify_ (\y' -> min maxY $ max minY $ toNumber deltaY / z -  y') refViewY
-      modify_ (\x' -> x' - toNumber deltaX / z) refViewX
-      modify_ (\y' -> y' + toNumber deltaY / z) refViewY
+          -- viewX == Grid.width / 2 <=> viewX == -Grid.width / 2
+      flip modify_ refViewX $ \x' ->
+        let newX = x' - toNumber deltaX / z
+            halfWidth = toNumber $ Grid.width / 2
+        in  (newX + halfWidth % toNumber Grid.width) - halfWidth
+      flip modify_ refViewY $ \y' ->
+        let newY = y' + toNumber deltaY / z
+            halfHeight = toNumber $ Grid.height / 2
+        in  (newY + halfHeight % toNumber Grid.height) - halfHeight
 
     write (Tuple x y) refMousePos
 
@@ -142,7 +149,7 @@ main = do
               , mouseVPos: mouseVPos
               , gridPos: gridPos
               }
-        render ctx $ Drawing.redraw params
+        Drawing.redraw ctx params
 
   onEventE Signal.animationFrame $ \_ -> do
     redraw
