@@ -149,7 +149,7 @@ main = do
               , mouseVPos: mouseVPos
               , gridPos: gridPos
               }
-        Drawing.redraw ctx params
+        render ctx $ Drawing.redraw params
 
   onEventE Signal.animationFrame $ \_ -> do
     redraw

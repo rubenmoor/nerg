@@ -7,24 +7,15 @@ import Prelude
 
 import Color (black, fromInt, rgba, white)
 import Data.Array (range, (!!))
-import Data.Foldable (fold, foldM, foldMap, foldl, foldr)
+import Data.Foldable (fold, foldMap)
 import Data.Int (ceil, floor, toNumber)
-import Data.List as List
-import Data.List.Lazy as Lazy
-import Data.Maybe (Maybe(..), fromMaybe)
+import Data.Maybe (Maybe(..))
 import Data.Tuple (Tuple(..))
-import Effect (Effect)
-import Graphics.Canvas (CanvasElement, Context2D, getContext2D)
 import Graphics.Drawing (Drawing, fillColor, filled, lineWidth, outlineColor, outlined, path, rectangle, text)
-import Graphics.Drawing (render) as Graphics
 import Graphics.Drawing.Font (font, monospace, sansSerif)
-import Grid (CellState(..), GridState, foldM_, forLoopM_)
+import Grid (CellState(..), GridState)
 import Grid (width, height) as Grid
 import Text.Formatting (int, number, print, s, string)
-
-type Foo = Tuple Int Drawing
-
-foreign import nestedFor :: Int -> Int -> Int -> Int -> (Int -> Int -> Effect Unit) -> Effect Unit
 
 type Params =
   { gridState :: GridState
@@ -44,9 +35,8 @@ type Params =
   , gridPos :: Tuple Int Int
   }
 
-redraw :: Context2D -> Params -> Effect Unit
-redraw ctx
-       { gridState: gridState
+redraw :: Params -> Drawing
+redraw { gridState: gridState
        , frameRate: frameRate
        , canvasDims: Tuple canvasWidth canvasHeight
        , viewPos: Tuple viewX viewY
@@ -54,8 +44,7 @@ redraw ctx
        , mousePos: Tuple mouseX mouseY
        , mouseVPos: Tuple mouseVX mouseVY
        , gridPos: Tuple gridX gridY
-       } = do
-  render $
+       } =
        drawBackground
     <> drawGridLines
     <> drawHoverFill
@@ -66,10 +55,8 @@ redraw ctx
     <> drawGridPos
     <> drawViewPos
     <> drawMouseViewPos
-  renderCells
+    <> drawCells
   where
-    render = Graphics.render ctx
-
     -- | scale transform y to cartesian coordinates
     sctr y = canvasHeight - y
     sctr' y = toNumber canvasHeight - y
@@ -96,63 +83,20 @@ redraw ctx
                          (z - 0.5)
                          (0.5 - z)
 
-    -- left fold w/o data structure
-    forLoop :: Int -> Int -> Foo -> (Int -> Foo -> Foo) -> Foo
-    forLoop i stop ds _ | i > stop = ds
-    forLoop i stop ds func = forLoop (i + 1) stop (func i ds) func
-
-    drawCells' =
-      let left = floor (viewX - widthC / 2.0)
-          right = 1 + ceil (viewX + widthC / 2.0)
-          bottom = floor (viewY - heightC / 2.0)
-          top = 1 + ceil (viewY + heightC / 2.0)
-          Tuple n cs = forLoop bottom top (Tuple 0 mempty) $ \row (Tuple c' ls) ->
-            let Tuple d' ds = forLoop left right (Tuple 0 mempty) $ \col (Tuple c ks) ->
-                  let i = (row `mod` Grid.height) * Grid.width + (col `mod` Grid.width)
-                      d = drawCell row col $ gridState !! i
-                  in  Tuple (if d == mempty then c else c + 1) $ ks <> d
-             in  Tuple (c' + d') (ls <> ds)
-          myFont = font sansSerif 12 mempty
-          style = fillColor gray
-      in  cs <> (text myFont 5.0 25.0 style $ show n)
-
     drawCells =
       let left = floor (viewX - widthC / 2.0)
           right = 1 + ceil (viewX + widthC / 2.0)
           bottom = floor (viewY - heightC / 2.0)
           top = 1 + ceil (viewY + heightC / 2.0)
           visibleCellIndices =
-            foldl (<>) mempty $ List.range bottom top <#> \row ->
-              List.range left right <#> \col ->
+            fold $ range bottom top <#> \row ->
+              range left right <#> \col ->
                 Tuple row col
           stateAt row col =
             let i = (row `mod` Grid.height) * Grid.width + (col `mod` Grid.width)
             in  gridState !! i
-      in  foldMap (\(Tuple row col) -> drawCell row col (stateAt row col)) visibleCellIndices
-
-    -- renderCells =
-    --   let left = floor (viewX - widthC / 2.0)
-    --       right = 1 + ceil (viewX + widthC / 2.0)
-    --       bottom = floor (viewY - heightC / 2.0)
-    --       top = 1 + ceil (viewY + heightC / 2.0)
-    --       visibleCellIndices =
-    --         foldl (<>) mempty $ List.range bottom top <#> \row ->
-    --           List.range left right <#> \col ->
-    --             Tuple row col
-    --       stateAt row col =
-    --         let i = (row `mod` Grid.height) * Grid.width + (col `mod` Grid.width)
-    --         in  gridState !! i
-    --   in  foldM (\_ (Tuple row col) -> render $ drawCell row col $ stateAt row col) unit visibleCellIndices
-
-    renderCells =
-      let left = floor (viewX - widthC / 2.0)
-          right = 1 + ceil (viewX + widthC / 2.0)
-          bottom = floor (viewY - heightC / 2.0)
-          top = 1 + ceil (viewY + heightC / 2.0)
-      in  nestedFor bottom top left right $ \row col ->
-            let i = (row `mod` Grid.height) * Grid.width + (col `mod` Grid.width)
-                state = gridState !! i
-            in  render $ drawCell row col state
+      in  flip foldMap visibleCellIndices $ \(Tuple row col) ->
+            drawCell row col $ stateAt row col
 
     drawGridLines =
       let -- vertical lines
