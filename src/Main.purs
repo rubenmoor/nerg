@@ -49,7 +49,7 @@ main = do
   -- | globals
 
   -- grid state
-  refGrid <- join $ new <$> randomGrid 0.1
+  refGridState <- join $ new <$> randomGrid 0.1
 
   -- frame rate
   refFrameCount <- new 0
@@ -75,8 +75,7 @@ main = do
     write (z + delta) refZoomFactor
 
   -- cell coordinates of canvas center
-  refViewX <- new 0.5
-  refViewY <- new 0.5
+  refViewPos <- new $ Tuple 0.0 0.0
   refMousePos <- new $ Tuple 0 0
   refMouseVPos <- new $ Tuple 0.0 0.0
   refGridPos <- new $ Tuple 0 0
@@ -93,8 +92,7 @@ main = do
     width <- getCanvasWidth canvasElement
     height <- getCanvasHeight canvasElement
     z <- toNumber <$> read refZoomFactor
-    viewX <- read refViewX
-    viewY <- read refViewY
+    Tuple viewX viewY <- read refViewPos
     let gridX = floor $ (toNumber x - width / 2.0) / z + viewX
         gridY = floor $ (height / 2.0 - toNumber y) / z + viewY
         mouseVX = toNumber (floor $ ((toNumber x - width / 2.0) / z + viewX) * 10.0) / 10.0
@@ -108,20 +106,16 @@ main = do
       Tuple oldX oldY <- read refMousePos
       let deltaX = x - oldX
           deltaY = y - oldY
-          -- viewX == Grid.width / 2 <=> viewX == -Grid.width / 2
-      flip modify_ refViewX $ \x' ->
-        let newX = x' - toNumber deltaX / z
-            halfWidth = toNumber $ Grid.width / 2
-        in  (newX + halfWidth % toNumber Grid.width) - halfWidth
-      flip modify_ refViewY $ \y' ->
-        let newY = y' + toNumber deltaY / z
-            halfHeight = toNumber $ Grid.height / 2
-        in  (newY + halfHeight % toNumber Grid.height) - halfHeight
+          halfWidth = toNumber $ Grid.width / 2
+          viewXNew = (viewX - toNumber deltaX / z + halfWidth % toNumber Grid.width) - halfWidth
+          halfHeight = toNumber $ Grid.height / 2
+          viewYNew = (viewY + toNumber deltaY / z + halfHeight % toNumber Grid.height) - halfHeight
+      write (Tuple viewXNew viewYNew) refViewPos
 
     write (Tuple x y) refMousePos
 
   let redraw = do
-        Tuple gridState _ <- read refGrid
+        livingCells <- _.livingCells <$> read refGridState
         -- check if resize is necessary
         width <- clientWidth canvas
         height <- clientHeight canvas
@@ -131,8 +125,7 @@ main = do
         unless (height == canvasHeight) $ setCanvasHeight canvasElement height
 
         frameRate <- read refFrameRate
-        viewX <- read refViewX
-        viewY <- read refViewY
+        viewPos <- read refViewPos
         zoomFactor <- read refZoomFactor
         mousePos <- read refMousePos
         mouseVPos <- read refMouseVPos
@@ -140,10 +133,10 @@ main = do
 
         let params :: Drawing.Params
             params =
-              { gridState: gridState
-              , frameRate: frameRate
+              { livingCells
+              , frameRate
               , canvasDims: Tuple (round width) $ round height
-              , viewPos: Tuple viewX viewY
+              , viewPos
               , zoomFactor: zoomFactor
               , mousePos: mousePos
               , mouseVPos: mouseVPos

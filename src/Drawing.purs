@@ -6,20 +6,20 @@ module Drawing
 import Prelude
 
 import Color (black, fromInt, rgba, white)
-import Data.Array (range, (!!))
+import Data.Array (range)
 import Data.Foldable (fold, foldMap)
 import Data.Int (ceil, floor, toNumber)
-import Data.List as List
-import Data.Maybe (Maybe(..))
 import Data.Tuple (Tuple(..))
 import Graphics.Drawing (Drawing, fillColor, filled, lineWidth, outlineColor, outlined, path, rectangle, text)
 import Graphics.Drawing.Font (font, monospace, sansSerif)
-import Grid (CellState(..), GridState)
+import Grid (LivingCells)
 import Grid (width, height) as Grid
 import Text.Formatting (int, number, print, s, string)
 
+foreign import binarySearch :: forall a. Array a -> a -> Boolean
+
 type Params =
-  { gridState :: GridState
+  { livingCells :: LivingCells
   , frameRate :: Int
   , canvasDims :: Tuple Int Int
 
@@ -37,7 +37,7 @@ type Params =
   }
 
 redraw :: Params -> Drawing
-redraw { gridState: gridState
+redraw { livingCells: livingCells
        , frameRate: frameRate
        , canvasDims: Tuple canvasWidth canvasHeight
        , viewPos: Tuple viewX viewY
@@ -73,13 +73,10 @@ redraw { gridState: gridState
     lightgray = fromInt 0x999999
     grayish = rgba 256 256 256 0.2
 
-    drawCell row col (Just Dead) = mempty
-    drawCell row col mState =
+    drawCell row col =
       let x = (widthC / 2.0 - toNumber (Grid.width / 2) - viewX + toNumber col) * z
           y = (heightC / 2.0 - toNumber (Grid.height / 2) - viewY + toNumber row) * z
-          color = case mState of
-                       Just Alive -> fromInt 0x1111FF
-                       _ -> fromInt 0xFF0000
+          color = fromInt 0x1111FF
       in  filled (fillColor color) $
                rectangle x
                          (sctr' y)
@@ -92,17 +89,14 @@ redraw { gridState: gridState
           bottom = floor (viewY - heightC / 2.0)
           top = 1 + ceil (viewY + heightC / 2.0)
           -- at zoom factor 7, canvas size 300px x 300px:
-          -- * JS Array: 44/45 fps, crash when decreasing zoom
+          -- * JS Array: 44/45 fps, crash when decreasing zoom: too much recursing in some traverse_
           -- * Lazy list/lists: 4/5 fps, no crash
-          visibleCellIndices =
-            fold $ range bottom top <#> \row ->
-              range left right <#> \col ->
-                Tuple row col
-          stateAt row col =
-            let i = (row `mod` Grid.height) * Grid.width + (col `mod` Grid.width)
-            in  gridState !! i
-      in  flip foldMap visibleCellIndices $ \(Tuple row col) ->
-            drawCell row col $ stateAt row col
+      in  flip foldMap (range bottom top) $ \row ->
+            let toIndex col = (row `mod` Grid.height) * Grid.width + (col `mod` Grid.width)
+            in  fold $ range left right <#> \col ->
+                  if binarySearch livingCells (toIndex col)
+                  then drawCell row col
+                  else mempty
 
     drawGridLines =
       let -- vertical lines
