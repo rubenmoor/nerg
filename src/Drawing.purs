@@ -9,6 +9,7 @@ import Color (black, fromInt, rgba, white)
 import Data.Array (range, (!!))
 import Data.Foldable (fold, foldMap)
 import Data.Int (ceil, floor, toNumber)
+import Data.List as List
 import Data.Maybe (Maybe(..))
 import Data.Tuple (Tuple(..))
 import Graphics.Drawing (Drawing, fillColor, filled, lineWidth, outlineColor, outlined, path, rectangle, text)
@@ -47,6 +48,7 @@ redraw { gridState: gridState
        } =
        drawBackground
     <> drawGridLines
+    <> drawCells
     <> drawHoverFill
     <> drawCoordinateLabel 100 200
     <> drawCoordinateLabel (canvasWidth - 15) (canvasHeight - 15)
@@ -55,7 +57,6 @@ redraw { gridState: gridState
     <> drawGridPos
     <> drawViewPos
     <> drawMouseViewPos
-    <> drawCells
   where
     -- | scale transform y to cartesian coordinates
     sctr y = canvasHeight - y
@@ -68,7 +69,9 @@ redraw { gridState: gridState
     drawBackground =
       filled (fillColor black) $ rectangle 0.0 0.0 (toNumber canvasWidth) (toNumber canvasHeight)
 
-    gray = fromInt 0x919191
+    gray = fromInt 0x444444
+    lightgray = fromInt 0x999999
+    grayish = rgba 256 256 256 0.2
 
     drawCell row col (Just Dead) = mempty
     drawCell row col mState =
@@ -78,16 +81,19 @@ redraw { gridState: gridState
                        Just Alive -> fromInt 0x1111FF
                        _ -> fromInt 0xFF0000
       in  filled (fillColor color) $
-               rectangle (x + 0.5)
-                         (sctr' $ y + 0.5)
-                         (z - 0.5)
-                         (0.5 - z)
+               rectangle x
+                         (sctr' y)
+                         (z - 1.0)
+                         (1.0 - z)
 
     drawCells =
       let left = floor (viewX - widthC / 2.0)
           right = 1 + ceil (viewX + widthC / 2.0)
           bottom = floor (viewY - heightC / 2.0)
           top = 1 + ceil (viewY + heightC / 2.0)
+          -- at zoom factor 7, canvas size 300px x 300px:
+          -- * JS Array: 44/45 fps, crash when decreasing zoom
+          -- * Lazy list/lists: 4/5 fps, no crash
           visibleCellIndices =
             fold $ range bottom top <#> \row ->
               range left right <#> \col ->
@@ -134,20 +140,19 @@ redraw { gridState: gridState
           toYIndices i = (nBottom `mod` Grid.height) + i * Grid.height
           yBorderLines = toHoriPaths <<< toYCoords <<< toYIndices <$> yBorderIndices
 
-          thinStyle = lineWidth 0.5 <> outlineColor gray
-          thickStyle = lineWidth 1.5 <> outlineColor gray
+          thinStyle = lineWidth 1.0 <> outlineColor grayish
+          thickStyle = lineWidth 2.0 <> outlineColor gray
       in    outlined thinStyle (fold xLines <> fold yLines)
          <> outlined thickStyle (fold xBorderLines <> fold yBorderLines)
 
     drawHoverFill =
-      let darkgray = rgba 256 256 256 0.2
-          cellLeft = (toNumber gridX - viewX) * z + toNumber canvasWidth / 2.0
+      let cellLeft = (toNumber gridX - viewX) * z + toNumber canvasWidth / 2.0
           cellTop = sctr' $ (toNumber gridY - viewY) * z + toNumber canvasHeight / 2.0
-      in  filled (fillColor darkgray) $ rectangle cellLeft cellTop (z - 1.0) (1.0 - z)
+      in  filled (fillColor grayish) $ rectangle cellLeft cellTop (z - 1.0) (1.0 - z)
 
     drawFrameRate =
       let myFont = font sansSerif 12 mempty
-          style = fillColor gray
+          style = fillColor lightgray
       in text myFont 5.0 15.0 style $ print (int <<< s " fps") frameRate
 
     drawCoordinateLabel x y =

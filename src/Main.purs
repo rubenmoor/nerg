@@ -60,9 +60,6 @@ main = do
     write 0 refFrameCount
 
   -- zoomFactor: number of pixels per cell
-
-  -- JS Array: 44/45 fps, crash when decreasing zoom
-  -- Lazy list/lists: 4/5 fps, no crash
   refZoomFactor <- new 7
   onEventE (Signal.wheelY canvas) $ \deltaY -> do
     z <- read refZoomFactor
@@ -72,7 +69,10 @@ main = do
     --    || Grid.width * z > round width
     --    || Grid.height * z > round height) $
     --   modify_ (\x -> max 1 $ x + round deltaY) refZoomFactor
-    modify_ (\x -> max 1 $ x + round deltaY) refZoomFactor
+    let delta | deltaY > 0.0 || z > 20 = floor deltaY
+              | z > 3 && deltaY < 0.0 = -1
+              | otherwise = 0
+    write (z + delta) refZoomFactor
 
   -- cell coordinates of canvas center
   refViewX <- new 0.5
