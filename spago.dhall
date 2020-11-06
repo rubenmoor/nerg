@@ -13,6 +13,7 @@ You can edit this file as you like.
   , "lists"
   , "math"
   , "psci-support"
+  , "random"
   , "refs"
   , "signal"
   , "web-html"

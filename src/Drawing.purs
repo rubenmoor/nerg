@@ -1,5 +1,5 @@
 module Drawing
- ( redraw
+ ( redrawGrid
  , Params
  ) where
 
@@ -8,15 +8,20 @@ import Prelude
 import Color (black, fromInt, rgba, white)
 import Data.Array (range)
 import Data.Foldable (fold, foldMap)
-import Data.Int (ceil, floor, toNumber)
+import Data.Int (floor, toNumber)
+import Data.Maybe (Maybe(..))
 import Data.Tuple (Tuple(..))
 import Graphics.Drawing (Drawing, fillColor, filled, lineWidth, outlineColor, outlined, path, rectangle, text)
 import Graphics.Drawing.Font (font, monospace, sansSerif)
-import Grid (LivingCells)
+import Grid (CellState(..), LivingCells)
 import Grid (width, height) as Grid
 import Text.Formatting (int, number, print, s, string)
 
-foreign import binarySearch :: forall a. Array a -> a -> Boolean
+-- foreign import binarySearch :: forall a. Array (Tuple Int a) -> Int -> Maybe a
+foreign import binarySearch_ :: forall a. (a -> Maybe a) -> Maybe a -> Array (Tuple Int a) -> Int -> Maybe a
+
+binarySearch :: forall a. Array (Tuple Int a) -> Int -> Maybe a
+binarySearch = binarySearch_ Just Nothing
 
 type Params =
   { livingCells :: LivingCells
@@ -36,18 +41,18 @@ type Params =
   , gridPos :: Tuple Int Int
   }
 
-redraw :: Params -> Drawing
-redraw { livingCells: livingCells
-       , frameRate: frameRate
+redrawGrid :: Params -> Drawing
+redrawGrid
+       { livingCells
+       , frameRate
        , canvasDims: Tuple canvasWidth canvasHeight
        , viewPos: Tuple viewX viewY
-       , zoomFactor: zoomFactor
+       , zoomFactor
        , mousePos: Tuple mouseX mouseY
        , mouseVPos: Tuple mouseVX mouseVY
        , gridPos: Tuple gridX gridY
        } =
-       drawBackground
-    <> drawGridLines
+       drawGridLines
     <> drawCells
     <> drawHoverFill
     <> drawCoordinateLabel 100 200
@@ -66,17 +71,18 @@ redraw { livingCells: livingCells
     widthC = toNumber canvasWidth / z
     heightC = toNumber canvasHeight / z
 
-    drawBackground =
-      filled (fillColor black) $ rectangle 0.0 0.0 (toNumber canvasWidth) (toNumber canvasHeight)
-
+    -- drawBackground =
+      -- filled (fillColor black) $ rectangle 0.0 0.0 (toNumber canvasWidth) (toNumber canvasHeight)
     gray = fromInt 0x444444
     lightgray = fromInt 0x999999
     grayish = rgba 256 256 256 0.2
 
-    drawCell row col =
-      let x = (widthC / 2.0 - toNumber (Grid.width / 2) - viewX + toNumber col) * z
-          y = (heightC / 2.0 - toNumber (Grid.height / 2) - viewY + toNumber row) * z
-          color = fromInt 0x1111FF
+    drawCell row col state =
+      let x = (widthC / 2.0 - viewX + toNumber col) * z
+          y = (heightC / 2.0 - viewY + toNumber row) * z
+          color = case state of
+            Alive -> fromInt 0x1111FF
+            Dead  -> black
       in  filled (fillColor color) $
                rectangle x
                          (sctr' y)
@@ -85,64 +91,70 @@ redraw { livingCells: livingCells
 
     drawCells =
       let left = floor (viewX - widthC / 2.0)
-          right = 1 + ceil (viewX + widthC / 2.0)
+          right = floor (viewX + widthC / 2.0)
           bottom = floor (viewY - heightC / 2.0)
-          top = 1 + ceil (viewY + heightC / 2.0)
-          -- at zoom factor 7, canvas size 300px x 300px:
-          -- * JS Array: 44/45 fps, crash when decreasing zoom: too much recursing in some traverse_
-          -- * Lazy list/lists: 4/5 fps, no crash
+          top = floor (viewY + heightC / 2.0)
       in  flip foldMap (range bottom top) $ \row ->
             let toIndex col = (row `mod` Grid.height) * Grid.width + (col `mod` Grid.width)
             in  fold $ range left right <#> \col ->
-                  if binarySearch livingCells (toIndex col)
-                  then drawCell row col
-                  else mempty
+                  case binarySearch livingCells (toIndex col) of
+                    Just state -> drawCell row col state
+                    Nothing    -> mempty
 
-    drawGridLines =
-      let -- vertical lines
-          xIndex = floor viewX -- index of first border left of canvas center
+    toXCoords i =
+      let xIndex = floor viewX
           xFraction = viewX - toNumber xIndex
           leftOffset = floor (toNumber canvasWidth / 2.0 - xFraction * z) `mod` zoomFactor
+      in  leftOffset + i * zoomFactor
 
-          -- thin lines
-          xIndices = range 0 $ floor widthC
-          toVertPaths = toNumber >>> \x ->
-            path [ {x: x, y: 0.0}, {x: x, y: toNumber canvasHeight} ]
-          toXCoords i = leftOffset + i * zoomFactor
-          xLines = toVertPaths <<< toXCoords <$> xIndices
-
-          -- thick lines
-          xBorderIndices = range 0 $ floor $ widthC / toNumber Grid.width
-          nLeft = floor $ widthC / 2.0 - toNumber (Grid.width / 2) - viewX
-          toXIndices i = (nLeft `mod` Grid.width) + i * Grid.width
-          xBorderLines = toVertPaths <<< toXCoords <<< toXIndices <$> xBorderIndices
-
-          -- horizontal lines
-          yIndex = floor viewY -- index of first border bottom of canvas center
+    toYCoords i =
+      let yIndex = floor viewY
           yFraction = viewY - toNumber yIndex
           bottomOffset = floor (toNumber canvasHeight / 2.0 - yFraction * z) `mod` zoomFactor
+      in  bottomOffset + i * zoomFactor
 
-          -- thin lines
-          yIndices = range 0 $ floor heightC
-          toHoriPaths = sctr >>> toNumber >>> \y -> path [ {x: 0.0, y: y}, {x: toNumber canvasWidth, y: y} ]
-          toYCoords i = bottomOffset + i * zoomFactor
-          yLines = toHoriPaths <<< toYCoords <$> yIndices
+    xThickIndices = range 0 $ floor $ widthC / toNumber Grid.width
+    toXIndices left i = (floor left `mod` Grid.width) + i * Grid.width
+    yThickIndices = range 0 $ floor $ heightC / toNumber Grid.height
+    toYIndices bottom i = (floor bottom `mod` Grid.height) + i * Grid.height
+
+    drawGridLines =
+      let -- thin lines
+          toVertPaths = toNumber >>> \x ->
+            path [ {x: x, y: 0.0}, {x: x, y: toNumber canvasHeight} ]
+          toHoriPaths = sctr >>> toNumber >>> \y ->
+            path [ {x: 0.0, y: y}, {x: toNumber canvasWidth, y: y} ]
+
+          thinLines =
+            let xIndices = range 0 $ floor widthC
+                xLines = toVertPaths <<< toXCoords <$> xIndices
+
+                yIndices = range 0 $ floor heightC
+                yLines = toHoriPaths <<< toYCoords <$> yIndices
+                thinStyle = lineWidth 1.0 <> outlineColor grayish
+            in  outlined thinStyle (fold xLines <> fold yLines)
 
           -- thick lines
-          yBorderIndices = range 0 $ floor $ heightC / toNumber Grid.height
-          nBottom = floor $ heightC / 2.0 - toNumber (Grid.height / 2) - viewY
-          toYIndices i = (nBottom `mod` Grid.height) + i * Grid.height
-          yBorderLines = toHoriPaths <<< toYCoords <<< toYIndices <$> yBorderIndices
+          nLeft = widthC / 2.0 - toNumber (Grid.width / 2) - viewX
+          xBorderLines = toVertPaths <<< toXCoords <<< toXIndices nLeft <$> xThickIndices
 
-          thinStyle = lineWidth 1.0 <> outlineColor grayish
+          nBottom = heightC / 2.0 - toNumber (Grid.height / 2) - viewY
+          yBorderLines = toHoriPaths <<< toYCoords <<< toYIndices nBottom <$> yThickIndices
+
           thickStyle = lineWidth 2.0 <> outlineColor gray
-      in    outlined thinStyle (fold xLines <> fold yLines)
-         <> outlined thickStyle (fold xBorderLines <> fold yBorderLines)
+      in  (if zoomFactor >= 10 then thinLines else mempty)
+            <> outlined thickStyle (fold xBorderLines <> fold yBorderLines)
 
     drawHoverFill =
-      let cellLeft = (toNumber gridX - viewX) * z + toNumber canvasWidth / 2.0
-          cellTop = sctr' $ (toNumber gridY - viewY) * z + toNumber canvasHeight / 2.0
-      in  filled (fillColor grayish) $ rectangle cellLeft cellTop (z - 1.0) (1.0 - z)
+      let left = widthC / 2.0 + toNumber gridX - viewX
+          lefts = toXCoords <<< toXIndices left <$> xThickIndices
+          bottom = heightC / 2.0 + toNumber gridY - viewY
+          bottoms = toYCoords <<< toYIndices bottom <$> yThickIndices
+          toRectangle l b = rectangle l (sctr' b) (z - 1.0) (1.0 - z)
+          rects = fold $ lefts <#> \x ->
+            fold $ bottoms <#> \y ->
+              toRectangle (toNumber x) (toNumber y)
+      in  filled (fillColor grayish) rects
 
     drawFrameRate =
       let myFont = font sansSerif 12 mempty
