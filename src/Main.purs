@@ -24,7 +24,7 @@ import Web.DOM.Node (appendChild)
 import Web.HTML (window)
 import Web.HTML.HTMLDocument (body, toDocument)
 import Web.HTML.HTMLElement (toElement)
-import Web.HTML.Window (document)
+import Web.HTML.Window (document) as Window
 
 -- [ ] bugfix cgol rules
 -- [ ] intelligent scrolling using translate
@@ -38,19 +38,26 @@ import Web.HTML.Window (document)
 main :: Effect Unit
 main = do
   w <- window
-  doc <- document w
-  mBody <- body doc
+  document <- Window.document w
+  let doc = toDocument document
+  mBody <- body document
   let b = unsafePartial fromJust mBody
-  canvas <- createElement "canvas" $ toDocument doc
+
+  canvas <- createElement "canvas" doc
   let canvasElement = unsafeCoerce canvas :: CanvasElement
   ctx <- getContext2D canvasElement
   _ <- appendChild (toNode canvas) (toNode $ toElement b)
 
-  gridBuffer <- createElement "canvas" $ toDocument doc
+  ui <- createElement "canvas" doc
+  let uiElement = unsafeCoerce ui :: CanvasElement
+  uiCtx <- getContext2D uiElement
+  _ <- appendChild (toNode ui) (toNode $ toElement b)
+
+  gridBuffer <- createElement "canvas" doc
   let gridBufferElement = unsafeCoerce gridBuffer :: CanvasElement
   gridBufferCtx <- getContext2D gridBufferElement
 
-  scrollBuffer <- createElement "canvas" $ toDocument doc
+  scrollBuffer <- createElement "canvas" doc
   let scrollBufferElement = unsafeCoerce scrollBuffer :: CanvasElement
   scrollBufferCtx <- getContext2D scrollBufferElement
 
@@ -59,8 +66,9 @@ main = do
   -- grid state
   refGridState <- join $ new <$> randomGrid 0.1
 
-  -- grid buffer ready for redraw
+  -- buffer ready for redraw
   refGridBufferReady <- new false
+  refScrollBufferReady <- new false
 
   -- frame rate
   refFrameCount <- new 0
@@ -95,30 +103,50 @@ main = do
     {x: x, y: y} <- Signal.get sMousePos
     write (Tuple x y) refMousePos
 
-  let redrawBuffer = do
-        livingCells <- _.livingCells <$> read refGridState
+  let redrawUI = do
         frameRate <- read refFrameRate
+        zoomFactor <- read refZoomFactor
+        Tuple mouseX mouseY <- read refMousePos
+        Tuple mouseVX mouseVY <- read refMouseVPos
+        Tuple gridX gridY <- read refGridPos
         width <- getCanvasWidth canvasElement
         height <- getCanvasHeight canvasElement
-        viewPos <- read refViewPos
-        zoomFactor <- read refZoomFactor
-        mousePos <- read refMousePos
-        mouseVPos <- read refMouseVPos
-        gridPos <- read refGridPos
+        Tuple viewX viewY <- read refViewPos
+        clearRect uiCtx { x: 0.0, y: 0.0, width, height }
+        render uiCtx $ Drawing.redrawUI frameRate
+                                        zoomFactor
+                                        mouseX mouseY
+                                        mouseVX mouseVY
+                                        gridX gridY
+                                        width height
+                                        viewX viewY
 
-        let params :: Drawing.Params
-            params =
-              { livingCells: livingCells
-              , frameRate
-              , canvasDims: Tuple (round width) $ round height
-              , viewPos
-              , zoomFactor: zoomFactor
-              , mousePos: mousePos
-              , mouseVPos: mouseVPos
-              , gridPos: gridPos
-              }
+  -- TODO: redrawFull
+
+  let redrawFull = do
+        cellStates <- _.cellStates <$> read refGridState
+        width <- getCanvasWidth canvasElement
+        height <- getCanvasHeight canvasElement
+        Tuple viewX viewY <- read refViewPos
+        zoomFactor <- read refZoomFactor
+
         clearRect gridBufferCtx { x: 0.0, y: 0.0, width, height }
-        render gridBufferCtx $ Drawing.redrawGrid params
+        render gridBufferCtx $ Drawing.redrawFull cellStates
+                                                  width height
+                                                  viewX viewY
+                                                  zoomFactor
+        write true refGridBufferReady
+
+  let redrawDelta = do
+        changes <- _.changes <$> read refGridState
+        width <- getCanvasWidth canvasElement
+        height <- getCanvasHeight canvasElement
+        Tuple viewX viewY <- read refViewPos
+        zoomFactor <- read refZoomFactor
+        render gridBufferCtx $ Drawing.redrawDelta changes
+                                                   width height
+                                                   viewX viewY
+                                                   zoomFactor
         write true refGridBufferReady
 
   onEventE Signal.animationFrame $ \_ -> do
@@ -130,25 +158,36 @@ main = do
     unless (width == canvasWidth) $ do setCanvasWidth canvasElement width
                                        setCanvasWidth scrollBufferElement width
                                        setCanvasWidth gridBufferElement width
+                                       setCanvasWidth uiElement width
     unless (height == canvasHeight) $ do setCanvasHeight canvasElement height
                                          setCanvasHeight scrollBufferElement height
                                          setCanvasHeight gridBufferElement height
-
+                                         setCanvasHeight uiElement height
     modify_ (\x -> x + 1) refFrameCount
-    whenM (read refGridBufferReady) $ do
+
+    redrawUI
+
+    gridBufferReady <- read refGridBufferReady
+    if gridBufferReady
+    then (do
       clearRect ctx { x: 0.0, y: 0.0, width, height }
       drawImage ctx (canvasElementToImageSource gridBufferElement) 0.0 0.0
       write false refGridBufferReady
+      )
+    else whenM (read refScrollBufferReady) $ do
+      clearRect ctx { x: 0.0, y: 0.0, width, height}
+      drawImage ctx (canvasElementToImageSource scrollBufferElement) 0.0 0.0
+      write false refScrollBufferReady
 
   onEvent gridBeat $ \_ -> do
     c <- read refFrameCount
     write (round(1000.0 * toNumber c / gamePeriod)) refFrameRate
     write 0 refFrameCount
 
-    { livingCells: _, cellStates, neighbors } <- read refGridState
+    { changes: _, cellStates, neighbors } <- read refGridState
     write (advance cellStates neighbors) refGridState
 
-    redrawBuffer
+    redrawDelta
 
   onEvent sMousePos $ \{x: x, y: y} -> do
     -- grid position label
@@ -180,7 +219,8 @@ main = do
       clearRect scrollBufferCtx { x: 0.0, y: 0.0, width, height}
       drawImage scrollBufferCtx (canvasElementToImageSource canvasElement)
                                 (toNumber deltaX) (toNumber deltaY)
-      clearRect ctx { x: 0.0, y: 0.0, width, height}
-      drawImage ctx (canvasElementToImageSource scrollBufferElement) 0.0 0.0
+      write true refScrollBufferReady
 
     write (Tuple x y) refMousePos
+
+  redrawFull

@@ -5,7 +5,8 @@ module Grid
   , PlayerId
   , CellState (..)
   , CellOwner (..)
-  , LivingCells
+  , Changes
+  , Change (..)
   , CellStates
   , GridState
   , Neighbors
@@ -28,10 +29,10 @@ import Effect (Effect)
 import Effect.Random (random)
 
 width :: Int
-width = 12
+width = 100
 
 height :: Int
-height = 12
+height = 100
 
 length :: Int
 length = width * height
@@ -46,17 +47,18 @@ data CellOwner = Neutral | Player PlayerId
 type CellStates = Array CellState
 type Neighbors = Array Int
 
-type LivingCells = Array (Tuple Int CellState)
+data Change = Born | Died
+type Changes = Array (Tuple Int Change)
 
 type GridState =
-  { livingCells :: LivingCells
+  { changes :: Changes
   , cellStates :: CellStates
   , neighbors :: Neighbors
   }
 
 emptyGrid :: GridState
 emptyGrid =
-  { livingCells: []
+  { changes: []
   , cellStates: replicate length Dead
   , neighbors: replicate length 0
   }
@@ -79,17 +81,14 @@ randomGrid :: Number -> Effect GridState
 randomGrid density = do
   randoms <- Lazy.zipWith Tuple (Lazy.range 0 $ length - 1) <$> Lazy.replicateM length random
   pure $ run (do
-    livingCells <- empty
     neighbors <- thaw $ replicate length 0
     cellStates <- thaw $ replicate length Dead
     forLoopM_ randoms $ \(Tuple i r) ->
       when (r < density) $ do
         _ <- poke i Alive cellStates
-        _ <- push (Tuple i Alive) livingCells
         addNeighbor neighbors i
-    { livingCells: _, cellStates: _, neighbors: _}
-      <$> freeze livingCells
-      <*> freeze cellStates
+    { changes: [], cellStates: _, neighbors: _}
+      <$> freeze cellStates
       <*> freeze neighbors
     )
 
@@ -120,28 +119,29 @@ looseNeighbor ns i =
 advance :: CellStates -> Neighbors -> GridState
 advance cs ns =
   run (do
-    livingCells <- empty
+    changes <- empty
     neighbors <- thaw ns
     cellStates <- thaw cs
     forLoopM_ (0..(length - 1)) $ \i -> do
       case cs !! i of
-        Nothing -> pure unit
         Just Dead ->
           case ns !! i of
-            Nothing -> pure unit
             Just 3 ->  do _ <- poke i Alive cellStates
                           addNeighbor neighbors i
-                          void $ push (Tuple i Alive) livingCells
+                          void $ push (Tuple i Born) changes
             Just _ -> pure unit
+            Nothing -> pure unit
         Just Alive ->
           case ns !! i of
-            Nothing -> pure unit
-            Just 2  -> void $ push (Tuple i Alive) livingCells
-            Just 3  -> void $ push (Tuple i Alive) livingCells
+            Just 2  -> pure unit
+            Just 3  -> pure unit
             Just _  -> do _ <- poke i Dead cellStates
                           looseNeighbor neighbors i
-    { livingCells: _, cellStates: _, neighbors: _}
-      <$> freeze livingCells
+                          void $ push (Tuple i Died) changes
+            Nothing -> pure unit
+        Nothing -> pure unit
+    { changes: _, cellStates: _, neighbors: _}
+      <$> freeze changes
       <*> freeze cellStates
       <*> freeze neighbors
   )
