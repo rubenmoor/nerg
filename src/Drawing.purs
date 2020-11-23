@@ -11,7 +11,7 @@ import Data.Array (range, (!!))
 import Data.Foldable (fold, foldMap)
 import Data.Int (floor, toNumber)
 import Data.Maybe (Maybe(..))
-import Data.Tuple (Tuple)
+import Data.Tuple (Tuple(..))
 import Graphics.Drawing (Color, Drawing, fillColor, filled, lineWidth, outlineColor, outlined, path, rectangle, text)
 import Graphics.Drawing.Font (font, monospace, sansSerif)
 import Grid (CellState(..), CellStates, Change(..), Changes)
@@ -36,33 +36,17 @@ grayish = rgba 256 256 256 0.2
 blue :: Color
 blue = fromInt 0x1111FF
 
-redrawDelta :: Changes -> Number -> Number -> Number -> Number -> Int -> Drawing
-redrawDelta changes width height viewX viewY zoomFactor =
-  let z = toNumber zoomFactor
-      widthC = width / z
-      heightC = height / z
-
-      left = floor (viewX - widthC / 2.0)
-      right = floor (viewX + widthC / 2.0)
-      bottom = floor (viewY - heightC / 2.0)
-      top = floor (viewY + heightC / 2.0)
-
-      drawChange x y change =
-        let color = case change of
-              Born -> blue
-              Died -> black
-        in  filled (fillColor color) $
-          rectangle x (height - y) (z - 1.0) (1.0 - z)
-
-  in  flip foldMap (range bottom top) $ \row ->
-        let toIndex col = (row `mod` Grid.height) * Grid.width + (col `mod` Grid.width)
-        in  fold $ range left right <#> \col ->
-              case binarySearch changes (toIndex col) of
-                Just change ->
-                  let x = (widthC / 2.0 - viewX + toNumber col) * z
-                      y = (heightC / 2.0 - viewY + toNumber row) * z
-                  in  drawChange x y change
-                _      -> mempty
+redrawDelta :: Changes -> Number -> Number -> Tuple Number Number -> Int -> Drawing
+redrawDelta changes width height viewPos zoomFactor =
+  flip foldMap changes $ \(Tuple i change) ->
+    let z = toNumber zoomFactor
+        vx = width / 2.0 / z + toNumber (i `mod` Grid.width)
+        vy = height / 2.0 / z + toNumber (i / Grid.width)
+        color = fillColor $ case change of
+          Born -> blue
+          Died -> black
+    in  drawAtView width height zoomFactor viewPos vx vy $ \x y ->
+          filled color $ rectangle x (height - y) (z - 1.0) (1.0 - z)
 
 toXIndex :: Number -> Int -> Int
 toXIndex left i = (floor left `mod` Grid.width) + i * Grid.width
@@ -92,8 +76,8 @@ toYCoord viewY height zoomFactor i =
       bottomOffset = floor (height / 2.0 - yFraction * z) `mod` zoomFactor
   in  bottomOffset + i * zoomFactor
 
-redrawFull :: CellStates -> Number -> Number -> Number -> Number -> Int -> Drawing
-redrawFull cellStates width height viewX viewY zoomFactor =
+redrawFull :: CellStates -> Number -> Number -> Tuple Number Number -> Int -> Drawing
+redrawFull cellStates width height (Tuple viewX viewY) zoomFactor =
   let z = toNumber zoomFactor
       widthC = width / z
       heightC = height / z
@@ -125,6 +109,8 @@ redrawFull cellStates width height viewX viewY zoomFactor =
         in  (if zoomFactor >= 10 then thinLines else mempty)
             <> outlined thickStyle (fold xBorderLines <> fold yBorderLines)
 
+      -- TODO: explicit decision to use drawAtView on living cells
+      -- currently looping through all of cellStates
       drawCells =
         let left = floor (viewX - widthC / 2.0)
             right = floor (viewX + widthC / 2.0)
@@ -143,8 +129,21 @@ redrawFull cellStates width height viewX viewY zoomFactor =
 
   in  drawGridLines <> drawCells
 
-redrawUI :: Int -> Int -> Int -> Int -> Number -> Number -> Int -> Int -> Number -> Number -> Number -> Number -> Drawing
-redrawUI frameRate zoomFactor mouseX mouseY mouseVX mouseVY gridX gridY width height viewX viewY =
+drawAtView :: Number -> Number -> Int -> Tuple Number Number -> Number -> Number -> (Number -> Number -> Drawing) -> Drawing
+drawAtView width height zoomFactor (Tuple viewX viewY) vx vy drawFunc =
+  let z = toNumber zoomFactor
+      widthC = width / z
+      heightC = height / z
+      left = widthC / 2.0 + vx - viewX
+      lefts = toXCoord viewX width zoomFactor <<< toXIndex left <$> xThickIndices widthC
+      bottom = heightC / 2.0 + vy - viewY
+      bottoms = toYCoord viewY height zoomFactor <<< toYIndex bottom <$> yThickIndices heightC
+  in  fold $ lefts <#> \x ->
+        fold $ bottoms <#> \y ->
+          drawFunc (toNumber x) (toNumber y)
+
+redrawUI :: Int -> Int -> Int -> Int -> Number -> Number -> Int -> Int -> Number -> Number -> Tuple Number Number -> Drawing
+redrawUI frameRate zoomFactor mouseX mouseY mouseVX mouseVY gridX gridY width height viewPos@(Tuple viewX viewY) =
      drawHoverFill
   <> drawCoordinateLabel 100.1 200.0
   <> drawCoordinateLabel (width - 15.0) (height - 15.0)
@@ -159,15 +158,9 @@ redrawUI frameRate zoomFactor mouseX mouseY mouseVX mouseVY gridX gridY width he
     heightC = height / z
 
     drawHoverFill =
-      let left = widthC / 2.0 + toNumber gridX - viewX
-          lefts = toXCoord viewX width zoomFactor <<< toXIndex left <$> xThickIndices widthC
-          bottom = heightC / 2.0 + toNumber gridY - viewY
-          bottoms = toYCoord viewY height zoomFactor <<< toYIndex bottom <$> yThickIndices heightC
-          toRectangle l b = rectangle l (height - b) (z - 1.0) (1.0 - z)
-          rects = fold $ lefts <#> \x ->
-            fold $ bottoms <#> \y ->
-              toRectangle (toNumber x) (toNumber y)
-      in  filled (fillColor grayish) rects
+      drawAtView width height zoomFactor viewPos (toNumber gridX) (toNumber gridY) \x y ->
+        filled (fillColor grayish) $
+          rectangle x (height - y) (z - 1.0) (1.0 - z)
 
     drawFrameRate =
       let myFont = font sansSerif 12 mempty

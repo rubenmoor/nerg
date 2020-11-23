@@ -51,15 +51,13 @@ data Change = Born | Died
 type Changes = Array (Tuple Int Change)
 
 type GridState =
-  { changes :: Changes
-  , cellStates :: CellStates
+  { cellStates :: CellStates
   , neighbors :: Neighbors
   }
 
 emptyGrid :: GridState
 emptyGrid =
-  { changes: []
-  , cellStates: replicate length Dead
+  { cellStates: replicate length Dead
   , neighbors: replicate length 0
   }
 
@@ -87,7 +85,7 @@ randomGrid density = do
       when (r < density) $ do
         _ <- poke i Alive cellStates
         addNeighbor neighbors i
-    { changes: [], cellStates: _, neighbors: _}
+    { cellStates: _, neighbors: _}
       <$> freeze cellStates
       <*> freeze neighbors
     )
@@ -116,23 +114,23 @@ looseNeighbor ns i =
   forM_ (neighborIndices i) $ \j ->
     void $ modify j (\x -> x - 1) ns
 
-advance :: CellStates -> Neighbors -> GridState
-advance cs ns =
+advance :: GridState -> Tuple Changes GridState
+advance ({ cellStates: oldCellStates, neighbors: oldNeighbors }) =
   run (do
     changes <- empty
-    neighbors <- thaw ns
-    cellStates <- thaw cs
+    cellStates <- thaw (oldCellStates :: CellStates)
+    neighbors <- thaw (oldNeighbors :: Neighbors)
     forLoopM_ (0..(length - 1)) $ \i -> do
-      case cs !! i of
+      case oldCellStates !! i of
         Just Dead ->
-          case ns !! i of
+          case oldNeighbors !! i of
             Just 3 ->  do _ <- poke i Alive cellStates
                           addNeighbor neighbors i
                           void $ push (Tuple i Born) changes
             Just _ -> pure unit
             Nothing -> pure unit
         Just Alive ->
-          case ns !! i of
+          case oldNeighbors !! i of
             Just 2  -> pure unit
             Just 3  -> pure unit
             Just _  -> do _ <- poke i Dead cellStates
@@ -140,8 +138,9 @@ advance cs ns =
                           void $ push (Tuple i Died) changes
             Nothing -> pure unit
         Nothing -> pure unit
-    { changes: _, cellStates: _, neighbors: _}
-      <$> freeze changes
-      <*> freeze cellStates
-      <*> freeze neighbors
+    Tuple <$> freeze changes
+          <*> ({ cellStates: _, neighbors: _}
+                <$> freeze cellStates
+                <*> freeze neighbors
+              )
   )
