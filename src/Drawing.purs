@@ -142,8 +142,8 @@ drawAtView width height zoomFactor (Tuple viewX viewY) vx vy drawFunc =
         fold $ bottoms <#> \y ->
           drawFunc (toNumber x) (toNumber y)
 
-redrawUI :: Int -> Int -> Int -> Int -> Number -> Number -> Int -> Int -> Number -> Number -> Tuple Number Number -> Drawing
-redrawUI frameRate zoomFactor mouseX mouseY mouseVX mouseVY gridX gridY width height viewPos@(Tuple viewX viewY) =
+redrawUI :: Int -> Int -> Tuple Int Int -> Tuple Number Number -> Tuple Int Int -> Number -> Number -> Tuple Number Number -> Drawing
+redrawUI frameRate zoomFactor (Tuple mouseX mouseY) (Tuple mouseVX mouseVY) (Tuple gridX gridY) width height viewPos@(Tuple viewX viewY) =
      drawHoverFill
   <> drawCoordinateLabel 100.1 200.0
   <> drawCoordinateLabel (width - 15.0) (height - 15.0)
