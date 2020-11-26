@@ -7,6 +7,7 @@ You can edit this file as you like.
   [ "canvas"
   , "colors"
   , "console"
+  , "debug"
   , "drawing"
   , "effect"
   , "formatting"

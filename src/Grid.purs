@@ -22,11 +22,15 @@ import Control.Monad.ST (ST, run)
 import Data.Array (replicate, (!!), (..))
 import Data.Array.ST (STArray, empty, freeze, modify, poke, push, thaw)
 import Data.Foldable (class Foldable, foldM, foldr)
+import Data.Int (ceil, floor, toNumber)
 import Data.List.Lazy (replicateM, zipWith, range) as Lazy
 import Data.Maybe (Maybe(..))
 import Data.Tuple (Tuple(..))
+import Debug.Trace (trace)
 import Effect (Effect)
 import Effect.Random (random)
+
+foreign import sign :: Number -> Int
 
 width :: Int
 width = 100
@@ -48,6 +52,10 @@ type CellStates = Array CellState
 type Neighbors = Array Int
 
 data Change = Born | Died
+instance showChange :: Show Change where
+  show Born = "born"
+  show Died = "died"
+
 type Changes = Array (Tuple Int Change)
 
 type GridState =
@@ -114,30 +122,55 @@ looseNeighbor ns i =
   forM_ (neighborIndices i) $ \j ->
     void $ modify j (\x -> x - 1) ns
 
-advance :: GridState -> Tuple Changes GridState
-advance ({ cellStates: oldCellStates, neighbors: oldNeighbors }) =
+wrap :: Int -> Int -> Int -> Int
+wrap n offset x = (x - n / 2 - offset) `mod` n - n / 2 + offset
+
+indexToViewCoords :: Int -> Int -> Int -> Tuple Int Int
+indexToViewCoords i offsetX offsetY =
+  let x = i `mod` width
+      y = i / width
+  in  Tuple (wrap width offsetX x) (wrap height offsetY y)
+
+getOffset :: Number -> Number -> Int -> Int
+getOffset viewPos widthHeightC widthHeight =
+  sign viewPos * (ceil (max 0.0 (widthHeightC / 2.0 + viewPos - toNumber (widthHeight / 2)) + max 0.0 (widthHeightC / 2.0 - viewPos - toNumber (widthHeight / 2))) `mod` widthHeight)
+
+advance :: GridState -> Number -> Number -> Tuple Number Number -> Tuple Changes GridState
+advance ({ cellStates: oldCellStates, neighbors: oldNeighbors })
+        widthC heightC (Tuple viewX viewY) =
   run (do
+    let left = floor (viewX - widthC / 2.0)
+        right = floor (viewX + widthC / 2.0)
+        bottom = floor (viewY - heightC / 2.0)
+        top = floor (viewY + heightC / 2.0)
+        offsetX = getOffset viewX widthC width
+        offsetY = getOffset viewY heightC height
+        --offsetY = sign viewY * (ceil (max 0.0 (heightC / 2.0 + viewY - toNumber (height / 2)) + max 0.0 (heightC / 2.0 - viewY - toNumber (height / 2))) `mod` height)
     changes <- empty
     cellStates <- thaw (oldCellStates :: CellStates)
     neighbors <- thaw (oldNeighbors :: Neighbors)
-    forLoopM_ (0..(length - 1)) $ \i -> do
+    forLoopM_ (0..(length - 1)) \i ->
       case oldCellStates !! i of
         Just Dead ->
           case oldNeighbors !! i of
             Just 3 ->  do _ <- poke i Alive cellStates
                           addNeighbor neighbors i
-                          void $ push (Tuple i Born) changes
+                          let Tuple x y = indexToViewCoords i offsetX offsetY
+                          when (x > left && x < right && y > bottom && y < top) $
+                            void $ push (Tuple i Born) changes
             Just _ -> pure unit
-            Nothing -> pure unit
+            Nothing -> trace "oldNeighbors index out of bounds" \_ -> pure unit
         Just Alive ->
           case oldNeighbors !! i of
             Just 2  -> pure unit
             Just 3  -> pure unit
             Just _  -> do _ <- poke i Dead cellStates
                           looseNeighbor neighbors i
-                          void $ push (Tuple i Died) changes
-            Nothing -> pure unit
-        Nothing -> pure unit
+                          let Tuple x y = indexToViewCoords i offsetX offsetY
+                          when (x > left && x < right && y > bottom && y < top) $
+                            void $ push (Tuple i Died) changes
+            Nothing -> trace "oldNeighbors index out of bounds (2)" \_ -> pure unit
+        Nothing -> trace "oldCellstates index out of bounds" \_ -> pure unit
     Tuple <$> freeze changes
           <*> ({ cellStates: _, neighbors: _}
                 <$> freeze cellStates

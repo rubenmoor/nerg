@@ -2,9 +2,12 @@ module Main where
 
 import Prelude
 
+import Data.Array (length)
 import Data.Int (floor, round, toNumber)
 import Data.Maybe (fromJust)
+import Data.Show (show)
 import Data.Tuple (Tuple(..), fst, snd)
+import Debug.Trace (trace)
 import Drawing as Drawing
 import Effect (Effect)
 import Effect.Ref (modify_, new, read, write)
@@ -17,6 +20,7 @@ import Math ((%))
 import Partial.Unsafe (unsafePartial)
 import Signal (get) as Signal
 import Signal.DOM (MouseButton(..), mouseButtonPressed, mousePos, animationFrame, wheelY) as Signal
+import Signal.DOM (keyPressed)
 import Unsafe.Coerce (unsafeCoerce)
 import Web.DOM.Document (createElement)
 import Web.DOM.Element (clientHeight, clientWidth, toNode)
@@ -29,10 +33,13 @@ import Web.HTML.Window (document) as Window
 -- [ ] bugfix cgol rules
 -- [ ] intelligent scrolling using translate
 -- [ ] intelligent zooming using scale
--- [ ] ui canvas on top
+-- [x] ui canvas on top
 -- [ ] live mode: click-activate based cgol
 -- [ ] insert custom mode: select flexible size area for custom shape insert
 -- [ ] insert library shape mode: select library shape for insertion
+
+keyCodeSpacebar :: Int
+keyCodeSpacebar = 32
 
 -- | globals
 type AppState =
@@ -122,12 +129,10 @@ main = do
   sMousePos <- Signal.mousePos
 
   onEvent sMouse1 $ \t -> when t $ do
-    {x: x, y: y} <- Signal.get sMousePos
+    {x, y} <- Signal.get sMousePos
     modify_ (_ { mousePos = Tuple x y }) refAppState
 
   onEventE Signal.animationFrame $ \_ -> do
-    app <- read refAppState
-
     -- check if resize is necessary
     width <- clientWidth canvas
     height <- clientHeight canvas
@@ -143,6 +148,7 @@ main = do
     clearRect bufferCtx { x: 0.0, y: 0.0, width, height }
     drawImage bufferCtx (canvasElementToImageSource canvasElement) 0.0 0.0
 
+    app <- read refAppState
     -- redraw changes on buffer
     -- TODO: make redrawDelta aware of current view
     render bufferCtx $ Drawing.redrawDelta app.changes
@@ -150,10 +156,10 @@ main = do
                                            app.viewPos
                                            app.zoomFactor
     -- clear changes cache
-    flip write refAppState $
-      app { frameCount = app.frameCount + 1
-          , changes = []
-          }
+    flip modify_ refAppState $ \a ->
+      a { frameCount = a.frameCount + 1
+        , changes = []
+        }
 
     clearRect ctx { x: 0.0, y: 0.0, width, height}
     drawImage ctx (canvasElementToImageSource bufferElement)
@@ -164,22 +170,28 @@ main = do
     -- TODO: apply zoom scaling to buffer
     -- copy buffer image to canvas AND apply scroll translation to buffer
     unless (app.scrollDelta == Tuple 0 0) $
-      flip write refAppState $
-        app { viewPos = moveView (toNumber app.zoomFactor) app.scrollDelta app.viewPos
-            , scrollDelta = Tuple 0 0
-            }
+      flip modify_ refAppState \a ->
+        a { viewPos = moveView (toNumber a.zoomFactor) a.scrollDelta a.viewPos
+          , scrollDelta = Tuple 0 0
+          }
 
-    redrawUI app width height uiCtx
+    app' <- read refAppState
+    redrawUI app' width height uiCtx
 
   onEvent gridBeat $ \_ -> do
-    app <- read refAppState
-    let Tuple changes gridState = advance app.gridState
-    flip write refAppState $
-      app { changes = changes
-          , gridState = gridState
-          , frameRate = round $ 1000.0 * toNumber app.frameCount / gamePeriod
-          , frameCount = 0
-          }
+  -- spaceBarDown <- keyPressed keyCodeSpacebar
+  -- onEvent spaceBarDown \downUp -> when downUp $ do
+    width <- getCanvasWidth canvasElement
+    height <- getCanvasHeight canvasElement
+    flip modify_ refAppState \app ->
+      let widthC = width / toNumber app.zoomFactor
+          heightC = height / toNumber app.zoomFactor
+          Tuple changes gridState = advance app.gridState widthC heightC app.viewPos
+      in  trace (show $ Tuple changes (length changes)) \_ -> app { changes = changes
+              , gridState = gridState
+              , frameRate = round $ 1000.0 * toNumber app.frameCount / gamePeriod
+              , frameCount = 0
+              }
 
   onEvent sMousePos $ \{x, y} -> do
     app <- read refAppState
@@ -194,18 +206,17 @@ main = do
         mouseVY = toNumber (floor $ ((height / 2.0 - toNumber y) / z + viewY) * 10.0) / 10.0
 
     -- drag mouse to scroll
-    leftButtonDown <- Signal.get sMouse1
-    when leftButtonDown $ do
+    whenM (Signal.get sMouse1) $ do
       let Tuple oldX oldY = app.mousePos
           Tuple dx dy = app.scrollDelta
-      flip write refAppState $
-        app { scrollDelta = Tuple (dx + x - oldX) (dy + y - oldY) }
+      flip modify_ refAppState $
+        _ { scrollDelta = Tuple (dx + x - oldX) (dy + y - oldY) }
 
-    flip write refAppState $
-      app { gridPos = Tuple gridX gridY
-          , mouseVPos = Tuple mouseVX mouseVY
-          , mousePos = Tuple x y
-          }
+    flip modify_ refAppState $
+      _ { gridPos = Tuple gridX gridY
+        , mouseVPos = Tuple mouseVX mouseVY
+        , mousePos = Tuple x y
+        }
 
   width <- getCanvasWidth canvasElement
   height <- getCanvasHeight canvasElement

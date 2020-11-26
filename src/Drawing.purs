@@ -27,6 +27,12 @@ binarySearch = binarySearch_ Just Nothing
 gray :: Color
 gray = fromInt 0x444444
 
+read :: Color
+read = fromInt 0xFF0000
+
+green :: Color
+green = fromInt 0x00FF00
+
 lightgray :: Color
 lightgray = fromInt 0x999999
 
@@ -40,13 +46,13 @@ redrawDelta :: Changes -> Number -> Number -> Tuple Number Number -> Int -> Draw
 redrawDelta changes width height viewPos zoomFactor =
   flip foldMap changes $ \(Tuple i change) ->
     let z = toNumber zoomFactor
-        vx = width / 2.0 / z + toNumber (i `mod` Grid.width)
-        vy = height / 2.0 / z + toNumber (i / Grid.width)
+        vx = toNumber $ i `mod` Grid.width
+        vy = toNumber $ i / Grid.width
         color = fillColor $ case change of
           Born -> blue
           Died -> black
     in  drawAtView width height zoomFactor viewPos vx vy $ \x y ->
-          filled color $ rectangle x (height - y) (z - 1.0) (1.0 - z)
+          filled color $ rectangle (x + 1.0) (height - y - 1.0) (z - 2.0) (2.0 - z)
 
 toXIndex :: Number -> Int -> Int
 toXIndex left i = (floor left `mod` Grid.width) + i * Grid.width
@@ -75,6 +81,38 @@ toYCoord viewY height zoomFactor i =
       yFraction = viewY - toNumber yIndex
       bottomOffset = floor (height / 2.0 - yFraction * z) `mod` zoomFactor
   in  bottomOffset + i * zoomFactor
+
+redrawFull' :: CellStates -> Number -> Number -> Number -> Number -> Tuple Number Number -> Int -> Drawing
+redrawFull' cellStates left bottom width height (Tuple viewX viewY) zoomFactor =
+  let z = toNumber zoomFactor
+
+      drawGridLines =
+        let -- thin lines
+            toVertPaths = toNumber >>> \x ->
+              path [ {x: x, y: 0.0}, {x: x, y: height} ]
+            toHoriPaths = toNumber >>> \y ->
+              path [ {x: 0.0, y: height - y}, {x: width, y: height - y} ]
+
+            thinLines =
+              let xIndices = range 0 $ floor width
+                  xLines = toVertPaths <<< toXCoord viewX width zoomFactor <$> xIndices
+
+                  yIndices = range 0 $ floor heightC
+                  yLines = toHoriPaths <<< toYCoord viewY height zoomFactor <$> yIndices
+                  thinStyle = lineWidth 1.0 <> outlineColor grayish
+              in  outlined thinStyle (fold xLines <> fold yLines)
+
+            -- thick lines
+            nLeft = widthC / 2.0 - toNumber (Grid.width / 2) - viewX
+            xBorderLines = toVertPaths <<< toXCoord viewX width zoomFactor <<< toXIndex nLeft <$> xThickIndices widthC
+
+            nBottom = heightC / 2.0 - toNumber (Grid.height / 2) - viewY
+            yBorderLines = toHoriPaths <<< toYCoord viewY height zoomFactor <<< toYIndex nBottom <$> yThickIndices heightC
+
+            thickStyle = lineWidth 2.0 <> outlineColor gray
+        in  (if zoomFactor >= 10 then thinLines else mempty)
+            <> outlined thickStyle (fold xBorderLines <> fold yBorderLines)
+  in  drawGridLines
 
 redrawFull :: CellStates -> Number -> Number -> Tuple Number Number -> Int -> Drawing
 redrawFull cellStates width height (Tuple viewX viewY) zoomFactor =
@@ -112,10 +150,10 @@ redrawFull cellStates width height (Tuple viewX viewY) zoomFactor =
       -- TODO: explicit decision to use drawAtView on living cells
       -- currently looping through all of cellStates
       drawCells =
-        let left = floor (viewX - widthC / 2.0)
-            right = floor (viewX + widthC / 2.0)
-            bottom = floor (viewY - heightC / 2.0)
-            top = floor (viewY + heightC / 2.0)
+        let left = floor $ viewX - widthC / 2.0
+            right = floor $ viewX + widthC / 2.0
+            bottom = floor $ viewY - heightC / 2.0
+            top = floor $ viewY + heightC / 2.0
 
         in  flip foldMap (range bottom top) $ \row ->
               let toIndex col = (row `mod` Grid.height) * Grid.width + (col `mod` Grid.width)
