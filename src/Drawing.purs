@@ -43,17 +43,25 @@ grayish = rgba 256 256 256 0.2
 blue :: Color
 blue = fromInt 0x1111FF
 
+cellDrawing :: Number -> Number -> Number -> Number -> Color -> Drawing
+cellDrawing z canvasHeight x y color =
+  filled (fillColor color) $
+    rectangle (toNumber $ floor $ x + 1.0)
+              (toNumber $ floor $ canvasHeight - y - 1.0)
+              (toNumber $ floor $ z - 2.0)
+              (toNumber $ floor $ 2.0 - z)
+
 redrawDelta :: Changes -> Number -> Number -> Tuple Number Number -> Int -> Drawing
 redrawDelta changes width height viewPos zoomFactor =
   flip foldMap changes $ \(Tuple i change) ->
     let z = toNumber zoomFactor
         vx = toNumber $ i `mod` Grid.width
         vy = toNumber $ i / Grid.width
-        color = fillColor $ case change of
+        color = case change of
           Born -> blue
           Died -> black
     in  drawAtView width height zoomFactor viewPos vx vy $ \x y ->
-          filled color $ rectangle (x + 1.0) (height - y - 1.0) (z - 2.0) (2.0 - z)
+          cellDrawing z height x y color
 
 toXIndex :: Number -> Int -> Int
 toXIndex left i = (floor left `mod` Grid.width) + i * Grid.width
@@ -130,7 +138,19 @@ redrawFull' cellStates canvasWidth canvasHeight left bottom width height (Tuple 
             thickStyle = lineWidth 2.0 <> outlineColor gray
         in  (if zoomFactor >= 10 then thinLines else mempty)
             <> outlined thickStyle (fold xBorderLines <> fold yBorderLines)
-  in  drawGridLines
+
+      drawCells =
+        flip foldMap (range (floor bottom) (ceil $ bottom + height)) $ \row ->
+          let toIndex col = (row `mod` Grid.height) * Grid.width + (col `mod` Grid.width)
+          in  fold $ range (floor left) (ceil $ left + width) <#> \col ->
+                case cellStates !! toIndex col of
+                  Just Alive ->
+                    let x = toPixelX $ toNumber col
+                        y = toPixelY $ toNumber row
+                    in  cellDrawing z canvasHeight x y blue
+                  _          -> mempty
+
+  in  drawGridLines <> drawCells
 
 redrawFull :: CellStates -> Number -> Number -> Tuple Number Number -> Int -> Drawing
 redrawFull cellStates width height (Tuple viewX viewY) zoomFactor =
@@ -165,8 +185,6 @@ redrawFull cellStates width height (Tuple viewX viewY) zoomFactor =
         in  (if zoomFactor >= 10 then thinLines else mempty)
             <> outlined thickStyle (fold xBorderLines <> fold yBorderLines)
 
-      -- TODO: explicit decision to use drawAtView on living cells
-      -- currently looping through all of cellStates
       drawCells =
         let left = floor $ viewX - widthC / 2.0
             right = floor $ viewX + widthC / 2.0
@@ -215,8 +233,7 @@ redrawUI frameRate zoomFactor (Tuple mouseX mouseY) (Tuple mouseVX mouseVY) (Tup
 
     drawHoverFill =
       drawAtView width height zoomFactor viewPos (toNumber gridX) (toNumber gridY) \x y ->
-        filled (fillColor grayish) $
-          rectangle x (height - y) (z - 1.0) (1.0 - z)
+        cellDrawing z height x y grayish
 
     drawFrameRate =
       let myFont = font sansSerif 12 mempty
