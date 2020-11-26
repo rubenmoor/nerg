@@ -33,10 +33,10 @@ import Effect.Random (random)
 foreign import sign :: Number -> Int
 
 width :: Int
-width = 100
+width = 10
 
 height :: Int
-height = 100
+height = 10
 
 length :: Int
 length = width * height

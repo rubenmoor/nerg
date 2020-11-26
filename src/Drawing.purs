@@ -1,6 +1,7 @@
 module Drawing
  ( redrawDelta
  , redrawFull
+ , redrawFull'
  , redrawUI
  ) where
 
@@ -9,7 +10,7 @@ import Prelude
 import Color (black, fromInt, rgba, white)
 import Data.Array (range, (!!))
 import Data.Foldable (fold, foldMap)
-import Data.Int (floor, toNumber)
+import Data.Int (ceil, floor, toNumber)
 import Data.Maybe (Maybe(..))
 import Data.Tuple (Tuple(..))
 import Graphics.Drawing (Color, Drawing, fillColor, filled, lineWidth, outlineColor, outlined, path, rectangle, text)
@@ -82,32 +83,49 @@ toYCoord viewY height zoomFactor i =
       bottomOffset = floor (height / 2.0 - yFraction * z) `mod` zoomFactor
   in  bottomOffset + i * zoomFactor
 
-redrawFull' :: CellStates -> Number -> Number -> Number -> Number -> Tuple Number Number -> Int -> Drawing
-redrawFull' cellStates left bottom width height (Tuple viewX viewY) zoomFactor =
+redrawFull' :: CellStates -> Number -> Number -> Number -> Number -> Number -> Number -> Tuple Number Number -> Int -> Drawing
+redrawFull' cellStates canvasWidth canvasHeight left bottom width height (Tuple viewX viewY) zoomFactor =
   let z = toNumber zoomFactor
+
+      toPixelX vx = canvasWidth / 2.0 + (vx - viewX) * toNumber zoomFactor
+      toPixelY vy = canvasHeight / 2.0 + (vy - viewY) * toNumber zoomFactor
+
+      right = left + width
+      top = bottom + height
 
       drawGridLines =
         let -- thin lines
-            toVertPaths = toNumber >>> \x ->
-              path [ {x: x, y: 0.0}, {x: x, y: height} ]
-            toHoriPaths = toNumber >>> \y ->
-              path [ {x: 0.0, y: height - y}, {x: width, y: height - y} ]
+            toVertPaths x =
+              path [ {x: x, y: canvasHeight - toPixelY bottom}, {x: x, y: canvasHeight - toPixelY top} ]
+            toHoriPaths y =
+              path [ {x: toPixelX left, y: canvasHeight - y}, {x: toPixelX right, y: canvasHeight - y} ]
 
             thinLines =
-              let xIndices = range 0 $ floor width
-                  xLines = toVertPaths <<< toXCoord viewX width zoomFactor <$> xIndices
+              let leftmost = toPixelX $ toNumber $ ceil left
+                  xIndices = range 0 $ floor width
+                  xVCoords = map (\i -> leftmost + toNumber i * z) xIndices
+                  xLines = map toVertPaths xVCoords
 
-                  yIndices = range 0 $ floor heightC
-                  yLines = toHoriPaths <<< toYCoord viewY height zoomFactor <$> yIndices
+                  bottommost = toPixelY $ toNumber $ ceil bottom
+                  yIndices = range 0 $ floor height
+                  yVCoords = map (\i -> bottommost + toNumber i * z) yIndices
+                  yLines = map toHoriPaths yVCoords
+
                   thinStyle = lineWidth 1.0 <> outlineColor grayish
               in  outlined thinStyle (fold xLines <> fold yLines)
 
             -- thick lines
-            nLeft = widthC / 2.0 - toNumber (Grid.width / 2) - viewX
-            xBorderLines = toVertPaths <<< toXCoord viewX width zoomFactor <<< toXIndex nLeft <$> xThickIndices widthC
+            xBorderLines =
+              let gw = toNumber Grid.width
+                  leftmost = toPixelX $ gw * (toNumber (ceil $ left / gw + 0.5) - 0.5)
+                  xVCoords = map (\i -> leftmost + toNumber (i * Grid.width * zoomFactor)) $ xThickIndices width
+              in  map toVertPaths xVCoords
 
-            nBottom = heightC / 2.0 - toNumber (Grid.height / 2) - viewY
-            yBorderLines = toHoriPaths <<< toYCoord viewY height zoomFactor <<< toYIndex nBottom <$> yThickIndices heightC
+            yBorderLines =
+              let gh = toNumber Grid.height
+                  bottommost = toPixelY $ gh * (toNumber (ceil $ bottom / gh + 0.5) - 0.5)
+                  yVCoords = map (\i -> bottommost + toNumber (i * Grid.height * zoomFactor)) $ yThickIndices height
+              in  map toHoriPaths yVCoords
 
             thickStyle = lineWidth 2.0 <> outlineColor gray
         in  (if zoomFactor >= 10 then thinLines else mempty)

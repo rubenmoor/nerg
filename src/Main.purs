@@ -178,9 +178,9 @@ main = do
     app' <- read refAppState
     redrawUI app' width height uiCtx
 
-  onEvent gridBeat $ \_ -> do
-  -- spaceBarDown <- keyPressed keyCodeSpacebar
-  -- onEvent spaceBarDown \downUp -> when downUp $ do
+  -- onEvent gridBeat $ \_ -> do
+  spaceBarDown <- keyPressed keyCodeSpacebar
+  onEvent spaceBarDown \downUp -> when downUp $ do
     width <- getCanvasWidth canvasElement
     height <- getCanvasHeight canvasElement
     flip modify_ refAppState \app ->
@@ -237,8 +237,15 @@ redrawUI app width height uiCtx = do
 redrawFull :: AppState -> Number -> Number -> Context2D -> Effect Unit
 redrawFull app width height canvasCtx = do
   clearRect canvasCtx { x: 0.0, y: 0.0, width, height }
-  render canvasCtx $ Drawing.redrawFull app.gridState.cellStates
+  let widthC = width / toNumber app.zoomFactor
+      heightC = height / toNumber app.zoomFactor
+      Tuple viewX viewY = app.viewPos
+      left = viewX - widthC / 2.0
+      bottom = viewY - heightC / 2.0
+  render canvasCtx $ Drawing.redrawFull' app.gridState.cellStates
                                         width height
+                                        left bottom
+                                        widthC heightC
                                         app.viewPos
                                         app.zoomFactor
 
