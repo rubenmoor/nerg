@@ -9,10 +9,7 @@ const clz32 = Math.clz32 || (function(log, LN2){
   };
 })(Math.log, Math.LN2);
 
-exports.binarySearch_ =
-  function (just) {
-    return function (nothing) {
-      return function (array){
+exports.binarySearch_ = just => nothing => array => {
         var initLen = array.length|0;
         if(initLen == 0) return nothing;
         initLen = initLen - 1 |0;
@@ -189,6 +186,4 @@ exports.binarySearch_ =
             return nothing;
           };
         };
-      };
-    };
   };

@@ -3,6 +3,10 @@ module Drawing
  , redrawFull
  , redrawFull'
  , redrawUI
+ , red
+ , green
+ , yellow
+ , binarySearch
  ) where
 
 import Prelude
@@ -12,14 +16,13 @@ import Data.Array (range, (!!))
 import Data.Foldable (fold, foldMap)
 import Data.Int (ceil, floor, toNumber)
 import Data.Maybe (Maybe(..))
-import Data.Tuple (Tuple(..))
+import Data.Tuple (Tuple(..), fst, snd)
 import Graphics.Drawing (Color, Drawing, fillColor, filled, lineWidth, outlineColor, outlined, path, rectangle, text)
 import Graphics.Drawing.Font (font, monospace, sansSerif)
 import Grid (CellState(..), CellStates, Change(..), Changes)
 import Grid (width, height) as Grid
 import Text.Formatting (int, number, print, s, string)
 
--- foreign import binarySearch :: forall a. Array (Tuple Int a) -> Int -> Maybe a
 foreign import binarySearch_ :: forall a. (a -> Maybe a) -> Maybe a -> Array (Tuple Int a) -> Int -> Maybe a
 
 binarySearch :: forall a. Array (Tuple Int a) -> Int -> Maybe a
@@ -28,11 +31,14 @@ binarySearch = binarySearch_ Just Nothing
 gray :: Color
 gray = fromInt 0x444444
 
-read :: Color
-read = fromInt 0xFF0000
+red :: Color
+red = fromInt 0xFF0000
 
 green :: Color
 green = fromInt 0x00FF00
+
+yellow :: Color
+yellow = fromInt 0xFFFF00
 
 lightgray :: Color
 lightgray = fromInt 0x999999
@@ -91,8 +97,8 @@ toYCoord viewY height zoomFactor i =
       bottomOffset = floor (height / 2.0 - yFraction * z) `mod` zoomFactor
   in  bottomOffset + i * zoomFactor
 
-redrawFull' :: CellStates -> Number -> Number -> Number -> Number -> Number -> Number -> Tuple Number Number -> Int -> Drawing
-redrawFull' cellStates canvasWidth canvasHeight left bottom width height (Tuple viewX viewY) zoomFactor =
+redrawFull' :: Color -> CellStates -> Number -> Number -> Number -> Number -> Number -> Number -> Tuple Number Number -> Int -> Drawing
+redrawFull' debugColor cellStates canvasWidth canvasHeight left bottom width height (Tuple viewX viewY) zoomFactor =
   let z = toNumber zoomFactor
 
       toPixelX vx = canvasWidth / 2.0 + (vx - viewX) * toNumber zoomFactor
@@ -140,7 +146,7 @@ redrawFull' cellStates canvasWidth canvasHeight left bottom width height (Tuple 
             <> outlined thickStyle (fold xBorderLines <> fold yBorderLines)
 
       drawCells =
-        flip foldMap (range (floor bottom) (ceil $ bottom + height)) $ \row ->
+        flip foldMap (range (ceil bottom) (ceil $ bottom + height)) $ \row ->
           let toIndex col = (row `mod` Grid.height) * Grid.width + (col `mod` Grid.width)
           in  fold $ range (floor left) (ceil $ left + width) <#> \col ->
                 case cellStates !! toIndex col of
@@ -149,8 +155,12 @@ redrawFull' cellStates canvasWidth canvasHeight left bottom width height (Tuple 
                         y = toPixelY $ toNumber row
                     in  cellDrawing z canvasHeight x y blue
                   _          -> mempty
-
-  in  drawGridLines <> drawCells
+      drawDebugFrame =
+        outlined (outlineColor debugColor <> lineWidth 10.0) $ rectangle (toPixelX left)
+                                                (canvasHeight - toPixelY bottom)
+                                                (width * z)
+                                                ((-1.0) * height * z)
+  in  drawGridLines <> drawCells <> drawDebugFrame
 
 redrawFull :: CellStates -> Number -> Number -> Tuple Number Number -> Int -> Drawing
 redrawFull cellStates width height (Tuple viewX viewY) zoomFactor =
@@ -216,8 +226,8 @@ drawAtView width height zoomFactor (Tuple viewX viewY) vx vy drawFunc =
         fold $ bottoms <#> \y ->
           drawFunc (toNumber x) (toNumber y)
 
-redrawUI :: Int -> Int -> Tuple Int Int -> Tuple Number Number -> Tuple Int Int -> Number -> Number -> Tuple Number Number -> Drawing
-redrawUI frameRate zoomFactor (Tuple mouseX mouseY) (Tuple mouseVX mouseVY) (Tuple gridX gridY) width height viewPos@(Tuple viewX viewY) =
+redrawUI :: Tuple Int Int -> String -> Maybe Change -> String -> Int -> Int -> Tuple Int Int -> Tuple Number Number -> Tuple Int Int -> Number -> Number -> Tuple Number Number -> Int -> Drawing
+redrawUI gridPosFromIndex currentState currentChange currentNNeighbors frameRate zoomFactor (Tuple mouseX mouseY) (Tuple mouseVX mouseVY) (Tuple gridX gridY) width height viewPos@(Tuple viewX viewY) gridIndex =
      drawHoverFill
   <> drawCoordinateLabel 100.1 200.0
   <> drawCoordinateLabel (width - 15.0) (height - 15.0)
@@ -226,6 +236,11 @@ redrawUI frameRate zoomFactor (Tuple mouseX mouseY) (Tuple mouseVX mouseVY) (Tup
   <> drawGridPos
   <> drawViewPos
   <> drawMouseViewPos
+  <> drawCurrentState
+  <> drawCurrentChange
+  <> drawCurrentNNeighbors
+  <> drawGridIndex
+  <> drawGridPosFromIndex
   where
     z = toNumber zoomFactor
     widthC = width / z
@@ -276,3 +291,33 @@ redrawUI frameRate zoomFactor (Tuple mouseX mouseY) (Tuple mouseVX mouseVY) (Tup
       in  text myFont 5.0  (height - 5.0)
                (fillColor white)
                (print (s "x: " <<< string <<< s " | y: " <<< string) x y)
+
+    drawCurrentState =
+      let myFont = font monospace 12 mempty
+      in  text myFont 5.0 (height - 65.0)
+               (fillColor white)
+               (print (s "state: " <<< string) currentState)
+
+    drawCurrentChange =
+      let myFont = font monospace 12 mempty
+      in  text myFont 5.0 (height - 85.0)
+               (fillColor white)
+               (print (s "change: " <<< string) $ show currentChange)
+
+    drawCurrentNNeighbors =
+      let myFont = font monospace 12 mempty
+      in  text myFont 5.0 (height - 105.0)
+               (fillColor white)
+               (print (s "#neighbors: " <<< string) currentNNeighbors)
+
+    drawGridIndex =
+      let myFont = font monospace 12 mempty
+      in  text myFont 5.0 (height - 125.0)
+               (fillColor white)
+               (print (s "i: " <<< int) gridIndex)
+
+    drawGridPosFromIndex =
+      let myFont = font monospace 12 mempty
+      in  text myFont 5.0 (height - 145.0)
+               (fillColor white)
+               (print (s "x': " <<< int <<< s " | y': " <<< int) (fst gridPosFromIndex) (snd gridPosFromIndex))

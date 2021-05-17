@@ -2,9 +2,10 @@ module Main where
 
 import Prelude
 
-import Data.Array (length)
+import Data.Array (find, findIndex, length, (!!))
 import Data.Int (floor, round, toNumber)
-import Data.Maybe (fromJust)
+import Data.Maybe (Maybe(..), fromJust, fromMaybe, maybe)
+import Data.Ord (abs)
 import Data.Show (show)
 import Data.Tuple (Tuple(..), fst, snd)
 import Debug.Trace (trace)
@@ -14,7 +15,7 @@ import Effect.Ref (modify_, new, read, write)
 import Events (gamePeriod, gridBeat, onEvent, onEventE)
 import Graphics.Canvas (CanvasElement, Context2D, canvasElementToImageSource, clearRect, drawImage, getCanvasHeight, getCanvasWidth, getContext2D, setCanvasHeight, setCanvasWidth)
 import Graphics.Drawing (render)
-import Grid (GridState, advance, randomGrid)
+import Grid (CellState(..), Change, GridState, advance, indexToViewCoords, randomGrid)
 import Grid as Grid
 import Math ((%))
 import Partial.Unsafe (unsafePartial)
@@ -22,7 +23,7 @@ import Signal (get) as Signal
 import Signal.DOM (MouseButton(..), mouseButtonPressed, mousePos, animationFrame, wheelY) as Signal
 import Signal.DOM (keyPressed)
 import Unsafe.Coerce (unsafeCoerce)
-import Web.DOM.Document (createElement)
+import Web.DOM.Document (createElement, documentURI)
 import Web.DOM.Element (clientHeight, clientWidth, toNode)
 import Web.DOM.Node (appendChild)
 import Web.HTML (window)
@@ -30,8 +31,8 @@ import Web.HTML.HTMLDocument (body, toDocument)
 import Web.HTML.HTMLElement (toElement)
 import Web.HTML.Window (document) as Window
 
--- [ ] bugfix cgol rules
--- [ ] intelligent scrolling using translate
+-- [x] bugfix cgol rules
+-- [x] intelligent scrolling using translate
 -- [ ] intelligent zooming using scale
 -- [x] ui canvas on top
 -- [ ] live mode: click-activate based cgol
@@ -41,6 +42,9 @@ import Web.HTML.Window (document) as Window
 keyCodeSpacebar :: Int
 keyCodeSpacebar = 32
 
+keyCodeR :: Int
+keyCodeR = 82
+
 -- | globals
 type AppState =
   {
@@ -48,7 +52,7 @@ type AppState =
     gridState :: GridState
   , changes :: Grid.Changes
 
-  , scrollDelta :: Tuple Int Int
+  , scrollDelta :: Maybe (Tuple Int Int)
 
   -- frame rate
   , frameCount :: Int
@@ -63,6 +67,11 @@ type AppState =
   , mousePos :: Tuple Int Int
   , mouseVPos :: Tuple Number Number
   , gridPos :: Tuple Int Int
+  , gridPosFromIndex :: Tuple Int Int
+  , gridIndex :: Int
+  , currentState :: String
+  , currentChange :: Maybe Change
+  , currentNNeighbors :: String
   }
 
 main :: Effect Unit
@@ -89,11 +98,11 @@ main = do
 
   -- initialize app state
   initialGrid <- randomGrid 0.1
-  let initialAppState =
+  let (initialAppState :: AppState) =
         { gridState: initialGrid
         , changes: []
 
-        , scrollDelta: Tuple 0 0
+        , scrollDelta: Nothing
 
         -- frame rate
         , frameCount: 0
@@ -108,6 +117,11 @@ main = do
         , mousePos: Tuple 0 0
         , mouseVPos: Tuple 0.0 0.0
         , gridPos: Tuple 0 0
+        , gridPosFromIndex: Tuple 0 0
+        , gridIndex: 0
+        , currentState: ""
+        , currentChange: Nothing
+        , currentNNeighbors: ""
         }
   refAppState <- new initialAppState
 
@@ -134,25 +148,29 @@ main = do
 
   onEventE Signal.animationFrame $ \_ -> do
     -- check if resize is necessary
-    width <- clientWidth canvas
-    height <- clientHeight canvas
+    canvasClientWidth <- clientWidth canvas
+    canvasClientHeight <- clientHeight canvas
     canvasWidth <- getCanvasWidth canvasElement
     canvasHeight <- getCanvasHeight canvasElement
-    unless (width == canvasWidth) $ do setCanvasWidth canvasElement width
-                                       setCanvasWidth bufferElement width
-                                       setCanvasWidth uiElement width
-    unless (height == canvasHeight) $ do setCanvasHeight canvasElement height
-                                         setCanvasHeight bufferElement height
-                                         setCanvasHeight uiElement height
+    unless (canvasClientWidth == canvasWidth) $ do
+      setCanvasWidth canvasElement canvasClientWidth
+      setCanvasWidth bufferElement canvasClientWidth
+      setCanvasWidth uiElement canvasClientWidth
+    unless (canvasClientHeight == canvasHeight) $ do
+      setCanvasHeight canvasElement canvasClientHeight
+      setCanvasHeight bufferElement canvasClientHeight
+      setCanvasHeight uiElement canvasClientHeight
+
     -- copy current canvas to buffer
-    clearRect bufferCtx { x: 0.0, y: 0.0, width, height }
+    -- TODO: check if better when apply scrolling here and apply rect-redraw to buffer
+    clearRect bufferCtx { x: 0.0, y: 0.0, width: canvasWidth, height: canvasHeight }
     drawImage bufferCtx (canvasElementToImageSource canvasElement) 0.0 0.0
 
     app <- read refAppState
+
     -- redraw changes on buffer
-    -- TODO: make redrawDelta aware of current view
     render bufferCtx $ Drawing.redrawDelta app.changes
-                                           width height
+                                           canvasWidth canvasHeight
                                            app.viewPos
                                            app.zoomFactor
     -- clear changes cache
@@ -161,24 +179,55 @@ main = do
         , changes = []
         }
 
-    clearRect ctx { x: 0.0, y: 0.0, width, height}
-    drawImage ctx (canvasElementToImageSource bufferElement)
-                  (toNumber $ fst app.scrollDelta) (toNumber $ snd app.scrollDelta)
+    -- copy buffer to canvas and apply scrolling
+    clearRect ctx { x: 0.0, y: 0.0, width: canvasWidth, height: canvasHeight}
+    case app.scrollDelta of
+      Nothing -> drawImage ctx (canvasElementToImageSource bufferElement) 0.0 0.0
+      Just (Tuple deltaX deltaY) -> do
+        let z = toNumber app.zoomFactor
+        drawImage ctx (canvasElementToImageSource bufferElement) (toNumber deltaX) (toNumber deltaY)
+        flip modify_ refAppState
+          _ { viewPos = moveView z deltaX deltaY app.viewPos
+            , scrollDelta = Nothing
+            }
 
-    -- TODO: full redraw on gaps caused by scrolling/zooming
+        -- TODO: full redraw on gaps caused by scrolling/zooming
 
-    -- TODO: apply zoom scaling to buffer
-    -- copy buffer image to canvas AND apply scroll translation to buffer
-    unless (app.scrollDelta == Tuple 0 0) $
-      flip modify_ refAppState \a ->
-        a { viewPos = moveView (toNumber a.zoomFactor) a.scrollDelta a.viewPos
-          , scrollDelta = Tuple 0 0
+        -- TODO: apply zoom scaling to buffer
+        -- copy buffer image to canvas AND apply scroll translation to buffer
+        -- deltaY > 0
+        let width = canvasWidth / z
+            height = canvasHeight / z
+            Tuple viewX viewY = app.viewPos
+            bottom1 = height - viewY - abs (toNumber deltaY / z)
+            left = viewX - width / 2.0
+            height1 = toNumber deltaY / z
+        render ctx $ Drawing.redrawFull' Drawing.red app.gridState.cellStates
+                                          canvasWidth canvasHeight
+                                          left bottom1
+                                          width height1
+                                          app.viewPos
+                                          app.zoomFactor
+        -- let bottom2 = viewY - height / 2.0
+        -- render ctx $ Drawing.redrawFull' Drawing.yellow app.gridState.cellStates
+        --                                   canvasWidth canvasHeight
+        --                                   left bottom2
+        --                                   width height1
+        --                                   app.viewPos
+        --                                   app.zoomFactor
+    app' <- read refAppState
+    redrawUI app' canvasWidth canvasHeight uiCtx
+
+  onEvent gridBeat $ \_ -> do
+    flip modify_ refAppState \app ->
+      app { frameRate = round $ 1000.0 * toNumber app.frameCount / gamePeriod
+          , frameCount = 0
           }
 
-    app' <- read refAppState
-    redrawUI app' width height uiCtx
+  keyRDown <- keyPressed keyCodeR
+  onEvent keyRDown \downUp -> when downUp $
+    read refAppState >>= redrawFull canvasElement ctx
 
-  -- onEvent gridBeat $ \_ -> do
   spaceBarDown <- keyPressed keyCodeSpacebar
   onEvent spaceBarDown \downUp -> when downUp $ do
     width <- getCanvasWidth canvasElement
@@ -196,61 +245,73 @@ main = do
   onEvent sMousePos $ \{x, y} -> do
     app <- read refAppState
     -- grid position label
-    width <- getCanvasWidth canvasElement
-    height <- getCanvasHeight canvasElement
+    canvasWidth <- getCanvasWidth canvasElement
+    canvasHeight <- getCanvasHeight canvasElement
     let Tuple viewX viewY = app.viewPos
         z = toNumber app.zoomFactor
-        gridX = floor $ (toNumber x - width / 2.0) / z + viewX
-        gridY = floor $ (height / 2.0 - toNumber y) / z + viewY
-        mouseVX = toNumber (floor $ ((toNumber x - width / 2.0) / z + viewX) * 10.0) / 10.0
-        mouseVY = toNumber (floor $ ((height / 2.0 - toNumber y) / z + viewY) * 10.0) / 10.0
+        widthC = canvasWidth / z
+        heightC = canvasHeight / z
+        gridX = floor $ toNumber x / z - widthC / 2.0 + viewX
+        gridY = floor $ heightC / 2.0 - toNumber y / z + viewY
+        mouseVX = toNumber (floor $ (toNumber x / z - widthC / 2.0 + viewX) * 10.0) / 10.0
+        mouseVY = toNumber (floor $ (heightC / 2.0 - toNumber y / z + viewY) * 10.0) / 10.0
 
     -- drag mouse to scroll
     whenM (Signal.get sMouse1) $ do
       let Tuple oldX oldY = app.mousePos
-          Tuple dx dy = app.scrollDelta
+          Tuple dx dy = fromMaybe (Tuple 0 0) app.scrollDelta
       flip modify_ refAppState $
-        _ { scrollDelta = Tuple (dx + x - oldX) (dy + y - oldY) }
+        _ { scrollDelta = Just $ Tuple (dx + x - oldX) (dy + y - oldY) }
 
-    flip modify_ refAppState $
-      _ { gridPos = Tuple gridX gridY
+    let gridIndex = gridX `mod` Grid.width + Grid.width * (gridY `mod` Grid.height)
+    flip modify_ refAppState \a ->
+      a { gridPos = Tuple gridX gridY
         , mouseVPos = Tuple mouseVX mouseVY
         , mousePos = Tuple x y
+        , gridPosFromIndex = indexToViewCoords gridIndex a.viewPos widthC heightC
+        , gridIndex = gridIndex
+        , currentState = maybe "#" show $ (a.gridState.cellStates !! gridIndex)
+        , currentChange = snd <$> find (\(Tuple i _) -> i == gridIndex) a.changes
+        , currentNNeighbors = maybe "#" show $ (a.gridState.neighbors !! gridIndex)
         }
 
-  width <- getCanvasWidth canvasElement
-  height <- getCanvasHeight canvasElement
-  redrawFull initialAppState width height ctx
+  redrawFull canvasElement ctx initialAppState
 
 redrawUI :: AppState -> Number -> Number -> Context2D -> Effect Unit
 redrawUI app width height uiCtx = do
   clearRect uiCtx { x: 0.0, y: 0.0, width, height }
-  render uiCtx $ Drawing.redrawUI app.frameRate
+  render uiCtx $ Drawing.redrawUI app.gridPosFromIndex
+                                  app.currentState
+                                  app.currentChange
+                                  app.currentNNeighbors
+                                  app.frameRate
                                   app.zoomFactor
                                   app.mousePos
                                   app.mouseVPos
                                   app.gridPos
                                   width height
                                   app.viewPos
+                                  app.gridIndex
 
--- TODO: allow to specify range for full redraw
-redrawFull :: AppState -> Number -> Number -> Context2D -> Effect Unit
-redrawFull app width height canvasCtx = do
-  clearRect canvasCtx { x: 0.0, y: 0.0, width, height }
-  let widthC = width / toNumber app.zoomFactor
-      heightC = height / toNumber app.zoomFactor
+redrawFull :: CanvasElement -> Context2D -> AppState -> Effect Unit
+redrawFull canvasElement canvasCtx app = do
+  canvasWidth <- getCanvasWidth canvasElement
+  canvasHeight <- getCanvasHeight canvasElement
+  clearRect canvasCtx { x: 0.0, y: 0.0, width: canvasWidth, height: canvasHeight }
+  let widthC = canvasWidth / toNumber app.zoomFactor
+      heightC = canvasHeight / toNumber app.zoomFactor
       Tuple viewX viewY = app.viewPos
       left = viewX - widthC / 2.0
       bottom = viewY - heightC / 2.0
-  render canvasCtx $ Drawing.redrawFull' app.gridState.cellStates
-                                        width height
+  render canvasCtx $ Drawing.redrawFull' Drawing.green app.gridState.cellStates
+                                        canvasWidth canvasHeight
                                         left bottom
                                         widthC heightC
                                         app.viewPos
                                         app.zoomFactor
 
-moveView :: Number -> Tuple Int Int -> Tuple Number Number -> Tuple Number Number
-moveView z (Tuple deltaX deltaY) (Tuple vx vy) =
+moveView :: Number -> Int -> Int -> Tuple Number Number -> Tuple Number Number
+moveView z deltaX deltaY (Tuple vx vy) =
   let viewXMoved = vx - toNumber deltaX / z
       halfWidth = (if viewXMoved > 0.0 then 1.0 else (-1.0)) * toNumber (Grid.width / 2)
       viewXNew = (viewXMoved + halfWidth) % toNumber Grid.width - halfWidth

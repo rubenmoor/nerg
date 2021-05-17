@@ -2,6 +2,7 @@ module Grid
   ( width
   , height
   , advance
+  , indexToViewCoords
   , PlayerId
   , CellState (..)
   , CellOwner (..)
@@ -44,6 +45,10 @@ length = width * height
 type PlayerId = Int
 
 data CellState = Dead | Alive
+
+instance showCellState :: Show CellState where
+  show Dead = "dead"
+  show Alive = "alive"
 
 -- not in use yet
 data CellOwner = Neutral | Player PlayerId
@@ -124,10 +129,15 @@ looseNeighbor ns i =
 
 wrap :: Int -> Int -> Int -> Int
 wrap n offset x = (x - n / 2 - offset) `mod` n - n / 2 + offset
+-- wrap n _ x = (x - n / 2) `mod` n - n / 2
 
-indexToViewCoords :: Int -> Int -> Int -> Tuple Int Int
-indexToViewCoords i offsetX offsetY =
-  let x = i `mod` width
+indexToViewCoords :: Int -> Tuple Number Number -> Number -> Number -> Tuple Int Int
+indexToViewCoords i (Tuple viewX viewY) widthC heightC =
+  let offsetX = sign viewX * (ceil (max 0.0 (widthC / 2.0 + viewX - toNumber (width / 2)) +
+                                    max 0.0 (widthC / 2.0 - viewX - toNumber (width / 2))) `mod` width)
+      offsetY = sign viewY * (ceil (max 0.0 (heightC / 2.0 + viewY - toNumber (height / 2)) +
+                                    max 0.0 (heightC / 2.0 - viewY - toNumber (height / 2))) `mod` height)
+      x = i `mod` width
       y = i / width
   in  Tuple (wrap width offsetX x) (wrap height offsetY y)
 
@@ -137,16 +147,14 @@ getOffset viewPos widthHeightC widthHeight =
 
 advance :: GridState -> Number -> Number -> Tuple Number Number -> Tuple Changes GridState
 advance ({ cellStates: oldCellStates, neighbors: oldNeighbors })
-        widthC heightC (Tuple viewX viewY) =
+        widthC heightC view@(Tuple viewX viewY) =
+  -- TODO: changes are not not in sync
   run (do
     let left = floor (viewX - widthC / 2.0)
         right = floor (viewX + widthC / 2.0)
         bottom = floor (viewY - heightC / 2.0)
         top = floor (viewY + heightC / 2.0)
-        offsetX = getOffset viewX widthC width
-        offsetY = getOffset viewY heightC height
-        --offsetY = sign viewY * (ceil (max 0.0 (heightC / 2.0 + viewY - toNumber (height / 2)) + max 0.0 (heightC / 2.0 - viewY - toNumber (height / 2))) `mod` height)
-    changes <- empty
+    changes <- trace (show [left, right, bottom, top]) \_ -> empty
     cellStates <- thaw (oldCellStates :: CellStates)
     neighbors <- thaw (oldNeighbors :: Neighbors)
     forLoopM_ (0..(length - 1)) \i ->
@@ -155,8 +163,8 @@ advance ({ cellStates: oldCellStates, neighbors: oldNeighbors })
           case oldNeighbors !! i of
             Just 3 ->  do _ <- poke i Alive cellStates
                           addNeighbor neighbors i
-                          let Tuple x y = indexToViewCoords i offsetX offsetY
-                          when (x > left && x < right && y > bottom && y < top) $
+                          let Tuple x y = indexToViewCoords i view widthC heightC
+                          when (x > left && x < right && y >= bottom && y <= top) $
                             void $ push (Tuple i Born) changes
             Just _ -> pure unit
             Nothing -> trace "oldNeighbors index out of bounds" \_ -> pure unit
@@ -166,8 +174,8 @@ advance ({ cellStates: oldCellStates, neighbors: oldNeighbors })
             Just 3  -> pure unit
             Just _  -> do _ <- poke i Dead cellStates
                           looseNeighbor neighbors i
-                          let Tuple x y = indexToViewCoords i offsetX offsetY
-                          when (x > left && x < right && y > bottom && y < top) $
+                          let Tuple x y = indexToViewCoords i view widthC heightC
+                          when (x > left && x < right && y >= bottom && y <= top) $
                             void $ push (Tuple i Died) changes
             Nothing -> trace "oldNeighbors index out of bounds (2)" \_ -> pure unit
         Nothing -> trace "oldCellstates index out of bounds" \_ -> pure unit
