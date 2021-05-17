@@ -1,6 +1,6 @@
 module Drawing
  ( redrawDelta
- , redrawFull
+ -- , redrawFull -- deprecated
  , redrawFull'
  , redrawUI
  , red
@@ -243,8 +243,8 @@ redrawUI gridPosFromIndex currentState currentChange currentNNeighbors frameRate
   <> drawGridPosFromIndex
   where
     z = toNumber zoomFactor
-    widthC = width / z
-    heightC = height / z
+    -- widthC = width / z
+    -- heightC = height / z
 
     drawHoverFill =
       drawAtView width height zoomFactor viewPos (toNumber gridX) (toNumber gridY) \x y ->

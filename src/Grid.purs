@@ -27,7 +27,7 @@ import Data.Int (ceil, floor, toNumber)
 import Data.List.Lazy (replicateM, zipWith, range) as Lazy
 import Data.Maybe (Maybe(..))
 import Data.Tuple (Tuple(..))
-import Debug.Trace (trace)
+import Debug (trace)
 import Effect (Effect)
 import Effect.Random (random)
 

@@ -2,20 +2,19 @@ module Main where
 
 import Prelude
 
-import Data.Array (find, findIndex, length, (!!))
+import Data.Array (find, length, (!!))
 import Data.Int (floor, round, toNumber)
 import Data.Maybe (Maybe(..), fromJust, fromMaybe, maybe)
 import Data.Ord (abs)
-import Data.Show (show)
-import Data.Tuple (Tuple(..), fst, snd)
-import Debug.Trace (trace)
+import Data.Tuple (Tuple(..), snd)
+import Debug (trace)
 import Drawing as Drawing
 import Effect (Effect)
 import Effect.Ref (modify_, new, read, write)
 import Events (gamePeriod, gridBeat, onEvent, onEventE)
 import Graphics.Canvas (CanvasElement, Context2D, canvasElementToImageSource, clearRect, drawImage, getCanvasHeight, getCanvasWidth, getContext2D, setCanvasHeight, setCanvasWidth)
 import Graphics.Drawing (render)
-import Grid (CellState(..), Change, GridState, advance, indexToViewCoords, randomGrid)
+import Grid (Change, GridState, advance, indexToViewCoords, randomGrid)
 import Grid as Grid
 import Math ((%))
 import Partial.Unsafe (unsafePartial)
@@ -169,6 +168,7 @@ main = do
     app <- read refAppState
 
     -- redraw changes on buffer
+    -- buggy
     render bufferCtx $ Drawing.redrawDelta app.changes
                                            canvasWidth canvasHeight
                                            app.viewPos
@@ -186,8 +186,9 @@ main = do
       Just (Tuple deltaX deltaY) -> do
         let z = toNumber app.zoomFactor
         drawImage ctx (canvasElementToImageSource bufferElement) (toNumber deltaX) (toNumber deltaY)
+        let viewPosNew = moveView z deltaX deltaY app.viewPos
         flip modify_ refAppState
-          _ { viewPos = moveView z deltaX deltaY app.viewPos
+          _ { viewPos = viewPosNew
             , scrollDelta = Nothing
             }
 
@@ -198,15 +199,21 @@ main = do
         -- deltaY > 0
         let width = canvasWidth / z
             height = canvasHeight / z
-            Tuple viewX viewY = app.viewPos
-            bottom1 = height - viewY - abs (toNumber deltaY / z)
+            Tuple viewX viewY = viewPosNew
+            -- deltaY negative: moving up, empty space at bottom of screen
+            --        positive: moving down, empty space at top of screen
+            bottom1 =
+              if deltaY < 0
+                then viewY - height / 2.0
+                else viewY + height / 2.0 - toNumber deltaY / z
             left = viewX - width / 2.0
-            height1 = toNumber deltaY / z
+            height1 = abs $ toNumber deltaY / z
+        -- buggy
         render ctx $ Drawing.redrawFull' Drawing.red app.gridState.cellStates
                                           canvasWidth canvasHeight
                                           left bottom1
                                           width height1
-                                          app.viewPos
+                                          viewPosNew
                                           app.zoomFactor
         -- let bottom2 = viewY - height / 2.0
         -- render ctx $ Drawing.redrawFull' Drawing.yellow app.gridState.cellStates
@@ -224,10 +231,12 @@ main = do
           , frameCount = 0
           }
 
+  -- manual full redraw by pressing r key
   keyRDown <- keyPressed keyCodeR
   onEvent keyRDown \downUp -> when downUp $
     read refAppState >>= redrawFull canvasElement ctx
 
+  -- manually advance state by pressing space bar
   spaceBarDown <- keyPressed keyCodeSpacebar
   onEvent spaceBarDown \downUp -> when downUp $ do
     width <- getCanvasWidth canvasElement
