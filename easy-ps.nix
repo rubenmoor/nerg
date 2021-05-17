@@ -1,8 +1,8 @@
     { pkgs ? import <nixpkgs> {} }:
-    
+
     import (pkgs.fetchFromGitHub {
         owner = "justinwoo";
         repo = "easy-purescript-nix";
-        rev = "7b1c1635e16c7f12065db2f8ec049030fcc63655";
-        sha256 = "1nybcann9aiwbvj95p6wam8xyhxwaxmfnkxmgylxcw42np2lvbzr";
+        rev = "fbbb27c1afd51d729939a6a2006e954dbd844846";
+        sha256 = "1kw9cqycrq456dipd5mq7c1ij6jl3d9ajlnba152db3qrw5wmrg0";
     }) { inherit pkgs; }

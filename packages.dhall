@@ -116,23 +116,17 @@ let additions =
   }
 -------------------------------
 -}
-
-
 let upstream =
-      https://github.com/purescript/package-sets/releases/download/psc-0.13.8/packages.dhall sha256:0e95ec11604dc8afc1b129c4d405dcc17290ce56d7d0665a0ff15617e32bbf03
+      https://github.com/purescript/package-sets/releases/download/psc-0.14.1-20210516/packages.dhall sha256:f5e978371d4cdc4b916add9011021509c8d869f4c3f6d0d2694c0e03a85046c8
 
-let overrides =
-  { signal = ./../purescript-signal/spago.dhall as Location
-  }
+let overrides = { signal = ./../purescript-signal/spago.dhall as Location }
 
 let additions =
-  { formatting =
-      { dependencies =
-          [ "prelude"
-          ]
-      , repo = "https://github.com/rubenmoor/purescript-formatting.git"
-      , version = "master"
+      { formatting =
+        { dependencies = [ "prelude" ]
+        , repo = "https://github.com/rubenmoor/purescript-formatting.git"
+        , version = "master"
+        }
       }
-  }
 
 in  upstream // overrides // additions
