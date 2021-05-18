@@ -2,7 +2,7 @@ module Main where
 
 import Prelude
 
-import Data.Array (find, length, (!!))
+import Data.Array (find, length, (!!), null)
 import Data.Int (floor, round, toNumber)
 import Data.Maybe (Maybe(..), fromJust, fromMaybe, maybe)
 import Data.Ord (abs)
@@ -204,24 +204,32 @@ main = do
             --        positive: moving down, empty space at top of screen
             bottom1 =
               if deltaY < 0
-                then viewY - height / 2.0
+                then viewY - height / 2.0 -- buggy
                 else viewY + height / 2.0 - toNumber deltaY / z
-            left = viewX - width / 2.0
+            left1 = viewX - width / 2.0
             height1 = abs $ toNumber deltaY / z
-        -- buggy
         render ctx $ Drawing.redrawFull' Drawing.red app.gridState.cellStates
-                                          canvasWidth canvasHeight
-                                          left bottom1
-                                          width height1
-                                          viewPosNew
-                                          app.zoomFactor
-        -- let bottom2 = viewY - height / 2.0
-        -- render ctx $ Drawing.redrawFull' Drawing.yellow app.gridState.cellStates
-        --                                   canvasWidth canvasHeight
-        --                                   left bottom2
-        --                                   width height1
-        --                                   app.viewPos
-        --                                   app.zoomFactor
+                                         canvasWidth canvasHeight
+                                         left1 bottom1
+                                         width height1
+                                         viewPosNew
+                                         app.zoomFactor
+        let left2 =
+              if deltaX < 0
+                then viewX + width / 2.0 + toNumber deltaX / z
+                else viewX - width / 2.0 -- buggy
+            bottom2 =
+              if deltaY < 0
+                then viewY - height / 2.0 - toNumber deltaY / z
+                else viewY - height / 2.0
+            width2 = abs $ toNumber deltaX / z
+            height2 = height - height1
+        render ctx $ Drawing.redrawFull' Drawing.yellow app.gridState.cellStates
+                                         canvasWidth canvasHeight
+                                         left2 bottom2
+                                         width2 height2
+                                         viewPosNew
+                                         app.zoomFactor
     app' <- read refAppState
     redrawUI app' canvasWidth canvasHeight uiCtx
 
@@ -313,11 +321,11 @@ redrawFull canvasElement canvasCtx app = do
       left = viewX - widthC / 2.0
       bottom = viewY - heightC / 2.0
   render canvasCtx $ Drawing.redrawFull' Drawing.green app.gridState.cellStates
-                                        canvasWidth canvasHeight
-                                        left bottom
-                                        widthC heightC
-                                        app.viewPos
-                                        app.zoomFactor
+                                         canvasWidth canvasHeight
+                                         left bottom
+                                         widthC heightC
+                                         app.viewPos
+                                         app.zoomFactor
 
 moveView :: Number -> Int -> Int -> Tuple Number Number -> Tuple Number Number
 moveView z deltaX deltaY (Tuple vx vy) =
