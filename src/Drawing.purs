@@ -59,7 +59,7 @@ cellDrawing z canvasHeight x y color =
 
 redrawDelta :: Changes -> Number -> Number -> Tuple Number Number -> Int -> Drawing
 redrawDelta changes width height viewPos zoomFactor =
-  flip foldMap changes $ \(Tuple i change) ->
+  fold $ changes <#> \(Tuple i change) ->
     let z = toNumber zoomFactor
         vx = toNumber $ i `mod` Grid.width
         vy = toNumber $ i / Grid.width
@@ -146,7 +146,7 @@ redrawFull' debugColor cellStates canvasWidth canvasHeight left bottom width hei
             <> outlined thickStyle (fold xBorderLines <> fold yBorderLines)
 
       drawCells =
-        flip foldMap (range (ceil bottom) (ceil $ bottom + height)) $ \row ->
+        flip foldMap (range (floor bottom) (floor (bottom + height))) $ \row ->
           let toIndex col = (row `mod` Grid.height) * Grid.width + (col `mod` Grid.width)
           in  fold $ range (floor left) (ceil $ left + width) <#> \col ->
                 case cellStates !! toIndex col of
