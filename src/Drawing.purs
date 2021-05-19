@@ -12,8 +12,9 @@ module Drawing
 import Prelude
 
 import Color (black, fromInt, rgba, white)
+import Debug (trace)
 import Data.Array (range, (!!))
-import Data.Foldable (fold, foldMap)
+import Data.Foldable (fold)
 import Data.Int (ceil, floor, toNumber)
 import Data.Maybe (Maybe(..))
 import Data.Tuple (Tuple(..), fst, snd)
@@ -115,13 +116,15 @@ redrawFull' debugColor cellStates canvasWidth canvasHeight left bottom width hei
               path [ {x: toPixelX left, y: canvasHeight - y}, {x: toPixelX right, y: canvasHeight - y} ]
 
             thinLines =
-              let leftmost = toPixelX $ toNumber $ ceil left
-                  xIndices = range 0 $ floor width
+              let ceilLeft = toNumber $ ceil left
+                  leftmost = toPixelX ceilLeft
+                  xIndices = range' 0 $ floor (width - ceilLeft + left)
                   xVCoords = map (\i -> leftmost + toNumber i * z) xIndices
                   xLines = map toVertPaths xVCoords
 
-                  bottommost = toPixelY $ toNumber $ ceil bottom
-                  yIndices = range 0 $ floor height
+                  ceilBottom = toNumber $ ceil bottom
+                  bottommost = toPixelY ceilBottom
+                  yIndices = range' 0 $ floor (height - ceilBottom + bottom)
                   yVCoords = map (\i -> bottommost + toNumber i * z) yIndices
                   yLines = map toHoriPaths yVCoords
 
@@ -146,7 +149,7 @@ redrawFull' debugColor cellStates canvasWidth canvasHeight left bottom width hei
             <> outlined thickStyle (fold xBorderLines <> fold yBorderLines)
 
       drawCells =
-        flip foldMap (range (floor bottom) (floor (bottom + height))) $ \row ->
+        fold $ range (floor bottom) (floor $ bottom + height) <#> \row ->
           let toIndex col = (row `mod` Grid.height) * Grid.width + (col `mod` Grid.width)
           in  fold $ range (floor left) (ceil $ left + width) <#> \col ->
                 case cellStates !! toIndex col of
@@ -156,11 +159,13 @@ redrawFull' debugColor cellStates canvasWidth canvasHeight left bottom width hei
                     in  cellDrawing z canvasHeight x y blue
                   _          -> mempty
       drawDebugFrame =
-        outlined (outlineColor debugColor <> lineWidth 10.0) $ rectangle (toPixelX left)
+        outlined (outlineColor debugColor <> lineWidth 1.0) $ rectangle (toPixelX left)
                                                 (canvasHeight - toPixelY bottom)
                                                 (width * z)
                                                 ((-1.0) * height * z)
-  in  drawGridLines <> drawCells <> drawDebugFrame
+  in     drawGridLines
+      <> drawCells
+      -- <> drawDebugFrame
 
 redrawFull :: CellStates -> Number -> Number -> Tuple Number Number -> Int -> Drawing
 redrawFull cellStates width height (Tuple viewX viewY) zoomFactor =
@@ -201,7 +206,7 @@ redrawFull cellStates width height (Tuple viewX viewY) zoomFactor =
             bottom = floor $ viewY - heightC / 2.0
             top = floor $ viewY + heightC / 2.0
 
-        in  flip foldMap (range bottom top) $ \row ->
+        in  fold $ range bottom top <#> \row ->
               let toIndex col = (row `mod` Grid.height) * Grid.width + (col `mod` Grid.width)
               in  fold $ range left right <#> \col ->
                     case cellStates !! toIndex col of
@@ -321,3 +326,7 @@ redrawUI gridPosFromIndex currentState currentChange currentNNeighbors frameRate
       in  text myFont 5.0 (height - 145.0)
                (fillColor white)
                (print (s "x': " <<< int <<< s " | y': " <<< int) (fst gridPosFromIndex) (snd gridPosFromIndex))
+
+range' :: Int -> Int -> Array Int
+range' start stop | stop < start = []
+range' start stop | otherwise = range start stop
