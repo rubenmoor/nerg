@@ -11,10 +11,9 @@ module Grid
   , CellStates
   , GridState
   , Neighbors
+  , toggleCell
   , emptyGrid
   , randomGrid
-  , foldM_
-  , forLoopM_
   ) where
 
 import Prelude
@@ -22,7 +21,7 @@ import Prelude
 import Control.Monad.ST (ST, run)
 import Data.Array (replicate, (!!), (..))
 import Data.Array.ST (STArray, empty, freeze, modify, poke, push, thaw)
-import Data.Foldable (class Foldable, foldM, foldr)
+import Data.Foldable (class Foldable, foldM, foldr, for_)
 import Data.Int (ceil, floor, toNumber)
 import Data.List.Lazy (replicateM, zipWith, range) as Lazy
 import Data.Maybe (Maybe(..))
@@ -74,27 +73,13 @@ emptyGrid =
   , neighbors: replicate length 0
   }
 
-mapM_ :: forall m t a. Monad m => Foldable t => (a -> m Unit) -> t a -> m Unit
-mapM_ func xs = foldr acc (pure unit) xs
-  where
-    acc x action = func x >>= \_ -> action
-
-forM_ :: forall m t a. Monad m => Foldable t => t a -> (a -> m Unit) -> m Unit
-forM_ = flip mapM_
-
-foldM_ :: forall a m f. Monad m => Foldable f => (a -> m Unit) -> f a -> m Unit
-foldM_ action xs = foldM (\_ x -> action x) unit xs
-
-forLoopM_ :: forall a m f. Monad m => Foldable f => f a -> (a -> m Unit) -> m Unit
-forLoopM_ = flip foldM_
-
 randomGrid :: Number -> Effect GridState
 randomGrid density = do
   randoms <- Lazy.zipWith Tuple (Lazy.range 0 $ length - 1) <$> Lazy.replicateM length random
   pure $ run (do
     neighbors <- thaw $ replicate length 0
     cellStates <- thaw $ replicate length Dead
-    forLoopM_ randoms $ \(Tuple i r) ->
+    for_ randoms $ \(Tuple i r) ->
       when (r < density) $ do
         _ <- poke i Alive cellStates
         addNeighbor neighbors i
@@ -119,12 +104,12 @@ neighborIndices i =
 
 addNeighbor :: forall h. STArray h Int -> Int -> ST h Unit
 addNeighbor ns i =
-  forM_ (neighborIndices i) $ \j ->
-    void $ modify j (\x -> x + 1) ns
+  for_ (neighborIndices i) $ \j ->
+    void $ modify j (add 1) ns
 
 looseNeighbor :: forall h. STArray h Int -> Int -> ST h Unit
 looseNeighbor ns i =
-  forM_ (neighborIndices i) $ \j ->
+  for_ (neighborIndices i) $ \j ->
     void $ modify j (\x -> x - 1) ns
 
 wrap :: Int -> Int -> Int -> Int
@@ -154,10 +139,10 @@ advance ({ cellStates: oldCellStates, neighbors: oldNeighbors })
         right = floor (viewX + widthC / 2.0)
         bottom = floor (viewY - heightC / 2.0)
         top = floor (viewY + heightC / 2.0)
-    changes <- trace (show [left, right, bottom, top]) \_ -> empty
+    changes <- empty
     cellStates <- thaw (oldCellStates :: CellStates)
     neighbors <- thaw (oldNeighbors :: Neighbors)
-    forLoopM_ (0..(length - 1)) \i ->
+    for_ (0..(length - 1)) \i ->
       case oldCellStates !! i of
         Just Dead ->
           case oldNeighbors !! i of
@@ -185,3 +170,23 @@ advance ({ cellStates: oldCellStates, neighbors: oldNeighbors })
                 <*> freeze neighbors
               )
   )
+
+toggleCell :: GridState -> Int -> Int -> Tuple Changes GridState
+toggleCell ({ cellStates: oldCellStates, neighbors: oldNeighbors })
+  x y =
+  run (do
+    changes <- empty
+    cellStates <- thaw (oldCellStates :: CellStates)
+    neighbors <- thaw (oldNeighbors :: Neighbors)
+    Tuple <$> freeze changes
+          <*> ({ cellStates: _, neighbors: _}
+                <$> freeze cellStates
+                <*> freeze neighbors
+              )
+  )
+
+pixelToIndex :: Number -> Tuple Number Number -> Number -> Number -> Int -> Int -> Int
+pixelToIndex z (Tuple viewX viewY) widthC heightC x y =
+  let gridX = floor $ toNumber x / z - widthC / 2.0 + viewX
+      gridY = floor $ heightC / 2.0 - toNumber y / z + viewY
+  in  gridX `mod` width + width * (gridY `mod` height)

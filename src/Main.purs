@@ -7,14 +7,13 @@ import Data.Int (floor, round, toNumber)
 import Data.Maybe (Maybe(..), fromJust, fromMaybe, maybe)
 import Data.Ord (abs)
 import Data.Tuple (Tuple(..), snd)
-import Debug (trace)
 import Drawing as Drawing
 import Effect (Effect)
 import Effect.Ref (modify_, new, read, write)
 import Events (gamePeriod, gridBeat, onEvent, onEventE)
 import Graphics.Canvas (CanvasElement, Context2D, canvasElementToImageSource, clearRect, drawImage, getCanvasHeight, getCanvasWidth, getContext2D, setCanvasHeight, setCanvasWidth)
 import Graphics.Drawing (render)
-import Grid (Change, GridState, advance, indexToViewCoords, randomGrid)
+import Grid (Change, GridState, advance, indexToViewCoords, randomGrid, emptyGrid)
 import Grid as Grid
 import Math ((%))
 import Partial.Unsafe (unsafePartial)
@@ -96,9 +95,9 @@ main = do
   bufferCtx <- getContext2D bufferElement
 
   -- initialize app state
-  initialGrid <- randomGrid 0.1
+  -- initialGrid <- randomGrid 0.1
   let (initialAppState :: AppState) =
-        { gridState: initialGrid
+        { gridState: emptyGrid -- initialGrid
         , changes: []
 
         , scrollDelta: Nothing

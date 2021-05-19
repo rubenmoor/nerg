@@ -12,7 +12,6 @@ module Drawing
 import Prelude
 
 import Color (black, fromInt, rgba, white)
-import Debug (trace)
 import Data.Array (range, (!!))
 import Data.Foldable (fold)
 import Data.Int (ceil, floor, toNumber)
