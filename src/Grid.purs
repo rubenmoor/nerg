@@ -19,7 +19,7 @@ module Grid
 import Prelude
 
 import Control.Monad.ST (ST, run)
-import Data.Array (replicate, (!!), (..))
+import Data.Array (replicate, (!!), (..), updateAt, modifyAt)
 import Data.Array.ST (STArray, empty, freeze, modify, poke, push, thaw)
 import Data.Foldable (class Foldable, foldM, foldr, for_)
 import Data.Int (ceil, floor, toNumber)
@@ -171,22 +171,29 @@ advance ({ cellStates: oldCellStates, neighbors: oldNeighbors })
               )
   )
 
-toggleCell :: GridState -> Int -> Int -> Tuple Changes GridState
-toggleCell ({ cellStates: oldCellStates, neighbors: oldNeighbors })
-  x y =
-  run (do
-    changes <- empty
-    cellStates <- thaw (oldCellStates :: CellStates)
-    neighbors <- thaw (oldNeighbors :: Neighbors)
-    Tuple <$> freeze changes
-          <*> ({ cellStates: _, neighbors: _}
-                <$> freeze cellStates
-                <*> freeze neighbors
-              )
-  )
-
-pixelToIndex :: Number -> Tuple Number Number -> Number -> Number -> Int -> Int -> Int
-pixelToIndex z (Tuple viewX viewY) widthC heightC x y =
-  let gridX = floor $ toNumber x / z - widthC / 2.0 + viewX
-      gridY = floor $ heightC / 2.0 - toNumber y / z + viewY
-  in  gridX `mod` width + width * (gridY `mod` height)
+toggleCell :: GridState -> Int -> Tuple Changes GridState
+toggleCell ({ cellStates: oldCellStates, neighbors: oldNeighbors }) i =
+  let { newState, neighborFunc, change } =
+        case oldCellStates !! i of
+          Just Dead  -> { newState: Alive
+                        , neighborFunc: add 1
+                        , change: Born
+                        }
+          Just Alive -> { newState: Dead
+                        , neighborFunc: \x -> x - 1
+                        , change: Died
+                        }
+          Nothing    -> trace "oldCellStates index out of bounds" $ \_ ->
+                          { newState: Alive, neighborFunc: add 1, change: Born }
+  in  let mArrays = do
+            cellStates <- updateAt i newState oldCellStates
+            neighbors <- modifyAt i neighborFunc oldNeighbors
+            pure { cellStates: cellStates
+                 , neighbors: neighbors
+                 , changes: [Tuple i change]
+                 }
+      in  case mArrays of
+            Just { cellStates, neighbors, changes } ->
+              Tuple changes { cellStates: cellStates, neighbors: neighbors }
+            Nothing -> trace "index out of bounds" \_ ->
+              Tuple [] { cellStates: oldCellStates, neighbors: oldNeighbors }
