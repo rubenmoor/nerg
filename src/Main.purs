@@ -22,8 +22,10 @@ import Signal.DOM (MouseButton(..), mouseButtonPressed, mousePos, animationFrame
 import Signal.DOM (keyPressed)
 import Unsafe.Coerce (unsafeCoerce)
 import Web.DOM.Document (createElement, documentURI)
-import Web.DOM.Element (clientHeight, clientWidth, toNode)
+import Web.DOM.Element (clientHeight, clientWidth, toNode, setAttribute, toEventTarget)
 import Web.DOM.Node (appendChild)
+import Web.Event.EventTarget (eventListener, addEventListener)
+import Web.Event.Event (EventType (..), stopPropagation, preventDefault)
 import Web.HTML (window)
 import Web.HTML.HTMLDocument (body, toDocument)
 import Web.HTML.HTMLElement (toElement)
@@ -90,6 +92,11 @@ main = do
   uiCtx <- getContext2D uiElement
   _ <- appendChild (toNode ui) (toNode $ toElement b)
 
+  noContextMenu <- eventListener $ \e -> do
+    preventDefault e
+    stopPropagation e
+  addEventListener (EventType "contextmenu") noContextMenu true (toEventTarget ui)
+
   buffer <- createElement "canvas" doc
   let bufferElement = unsafeCoerce buffer :: CanvasElement
   bufferCtx <- getContext2D bufferElement
@@ -137,10 +144,11 @@ main = do
               | otherwise = 0
     write (app { zoomFactor = app.zoomFactor + delta }) refAppState
 
-  sMouse1 <- Signal.mouseButtonPressed Signal.MouseLeftButton
+  sMouseLeft <- Signal.mouseButtonPressed Signal.MouseLeftButton
+  sMouseRight <- Signal.mouseButtonPressed Signal.MouseRightButton
   sMousePos <- Signal.mousePos
 
-  onEvent sMouse1 $ \t -> when t $ do
+  onEvent sMouseLeft $ \t -> when t $ do
     {x, y} <- Signal.get sMousePos
     modify_ (_ { mousePos = Tuple x y }) refAppState
 
@@ -273,7 +281,7 @@ main = do
         mouseVY = toNumber (floor $ (heightC / 2.0 - toNumber y / z + viewY) * 10.0) / 10.0
 
     -- drag mouse to scroll
-    whenM (Signal.get sMouse1) $ do
+    whenM (Signal.get sMouseLeft) $ do
       let Tuple oldX oldY = app.mousePos
           Tuple dx dy = fromMaybe (Tuple 0 0) app.scrollDelta
       flip modify_ refAppState $
@@ -291,7 +299,25 @@ main = do
         , currentNNeighbors = maybe "#" show $ (a.gridState.neighbors !! gridIndex)
         }
 
+  onEvent sMouseRight $ \pressed -> when pressed $ do
+    {x, y} <- Signal.get sMousePos
+    canvasWidth <- getCanvasWidth canvasElement
+    canvasHeight <- getCanvasHeight canvasElement
+    flip modify_ refAppState $ \app ->
+      let Tuple viewX viewY = app.viewPos
+          z = toNumber app.zoomFactor
+          widthC = canvasWidth / z
+          heightC = canvasHeight / z
+          gridX = floor $ toNumber x / z - widthC / 2.0 + viewX
+          gridY = floor $ heightC / 2.0 - toNumber y / z + viewY
+          gridIndex = gridX `mod` Grid.width + Grid.width * (gridY `mod` Grid.height)
+          Tuple changes gridState = Grid.toggleCell app.gridState gridIndex
+      in  app { changes = changes
+              , gridState = gridState
+              }
+
   redrawFull canvasElement ctx initialAppState
+
 
 redrawUI :: AppState -> Number -> Number -> Context2D -> Effect Unit
 redrawUI app width height uiCtx = do
