@@ -148,7 +148,7 @@ main = do
   sMouseRight <- Signal.mouseButtonPressed Signal.MouseRightButton
   sMousePos <- Signal.mousePos
 
-  onEvent sMouseLeft $ \t -> when t $ do
+  onEvent sMouseRight $ \t -> when t $ do
     {x, y} <- Signal.get sMousePos
     modify_ (_ { mousePos = Tuple x y }) refAppState
 
@@ -281,7 +281,7 @@ main = do
         mouseVY = toNumber (floor $ (heightC / 2.0 - toNumber y / z + viewY) * 10.0) / 10.0
 
     -- drag mouse to scroll
-    whenM (Signal.get sMouseLeft) $ do
+    whenM (Signal.get sMouseRight) $ do
       let Tuple oldX oldY = app.mousePos
           Tuple dx dy = fromMaybe (Tuple 0 0) app.scrollDelta
       flip modify_ refAppState $
@@ -299,7 +299,7 @@ main = do
         , currentNNeighbors = maybe "#" show $ (a.gridState.neighbors !! gridIndex)
         }
 
-  onEvent sMouseRight $ \pressed -> when pressed $ do
+  onEvent sMouseLeft $ \pressed -> when pressed $ do
     {x, y} <- Signal.get sMousePos
     canvasWidth <- getCanvasWidth canvasElement
     canvasHeight <- getCanvasHeight canvasElement

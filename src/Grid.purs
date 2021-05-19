@@ -187,7 +187,9 @@ toggleCell ({ cellStates: oldCellStates, neighbors: oldNeighbors }) i =
                           { newState: Alive, neighborFunc: add 1, change: Born }
   in  let mArrays = do
             cellStates <- updateAt i newState oldCellStates
-            neighbors <- modifyAt i neighborFunc oldNeighbors
+            neighbors <- foldM (\indices j -> modifyAt j neighborFunc indices)
+                               oldNeighbors
+                               (neighborIndices i)
             pure { cellStates: cellStates
                  , neighbors: neighbors
                  , changes: [Tuple i change]
