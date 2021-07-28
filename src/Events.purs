@@ -14,7 +14,7 @@ import Signal.Time (every)
 
 -- game speed in steps per second
 gameSpeed :: Number
-gameSpeed = 1.0
+gameSpeed = 4.0
 
 -- time per game cycle in miliseconds
 gamePeriod :: Number

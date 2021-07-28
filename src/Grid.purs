@@ -11,6 +11,7 @@ module Grid
   , CellStates
   , GridState
   , Neighbors
+  , birthCell
   , toggleCell
   , emptyGrid
   , randomGrid
@@ -33,10 +34,10 @@ import Effect.Random (random)
 foreign import sign :: Number -> Int
 
 width :: Int
-width = 20
+width = 100
 
 height :: Int
-height = 20
+height = 100
 
 length :: Int
 length = width * height
@@ -170,6 +171,28 @@ advance ({ cellStates: oldCellStates, neighbors: oldNeighbors })
                 <*> freeze neighbors
               )
   )
+
+birthCell :: GridState -> Int -> Tuple Changes GridState
+birthCell ({ cellStates: oldCellStates, neighbors: oldNeighbors }) i =
+  case oldCellStates !! i of
+    Just Dead  ->
+      let mArrays = do
+            cellStates <- updateAt i Alive oldCellStates
+            neighbors <- foldM (\indices j -> modifyAt j (add 1) indices)
+                               oldNeighbors
+                               (neighborIndices i)
+            pure { cellStates: cellStates
+                 , neighbors: neighbors
+                 , changes: [Tuple i Born]
+                 }
+      in  case mArrays of
+            Just { cellStates, neighbors, changes } ->
+              Tuple changes { cellStates: cellStates, neighbors: neighbors }
+            Nothing -> trace "index out of bounds" \_ ->
+              Tuple [] { cellStates: oldCellStates, neighbors: oldNeighbors }
+    Just Alive -> Tuple [] { cellStates: oldCellStates, neighbors: oldNeighbors }
+    Nothing    -> trace "oldCellStates index out of bounds" $ \_ ->
+      Tuple [] { cellStates: oldCellStates, neighbors: oldNeighbors }
 
 toggleCell :: GridState -> Int -> Tuple Changes GridState
 toggleCell ({ cellStates: oldCellStates, neighbors: oldNeighbors }) i =

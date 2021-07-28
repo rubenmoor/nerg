@@ -7,6 +7,7 @@ import Data.Int (floor, round, toNumber)
 import Data.Maybe (Maybe(..), fromJust, fromMaybe, maybe)
 import Data.Ord (abs)
 import Data.Tuple (Tuple(..), snd)
+import Debug (trace)
 import Drawing as Drawing
 import Effect (Effect)
 import Effect.Ref (modify_, new, read, write)
@@ -45,14 +46,21 @@ keyCodeSpacebar = 32
 keyCodeR :: Int
 keyCodeR = 82
 
+keyCodeS :: Int
+keyCodeS = 83
+
 -- | globals
 type AppState =
   {
-    -- grid state
+  -- grid state
     gridState :: GridState
   , changes :: Grid.Changes
 
-  , scrollDelta :: Maybe (Tuple Int Int)
+  -- advance automatically
+  , autoMode :: Boolean
+
+  , translateDelta :: Maybe (Tuple Int Int)
+  , zoomDelta :: Maybe Int
 
   -- frame rate
   , frameCount :: Int
@@ -107,7 +115,10 @@ main = do
         { gridState: emptyGrid -- initialGrid
         , changes: []
 
-        , scrollDelta: Nothing
+        , autoMode: false
+
+        , translateDelta: Nothing
+        , zoomDelta: Nothing
 
         -- frame rate
         , frameCount: 0
@@ -188,7 +199,7 @@ main = do
 
     -- copy buffer to canvas and apply scrolling
     clearRect ctx { x: 0.0, y: 0.0, width: canvasWidth, height: canvasHeight}
-    case app.scrollDelta of
+    case app.translateDelta of
       Nothing -> drawImage ctx (canvasElementToImageSource bufferElement) 0.0 0.0
       Just (Tuple deltaX deltaY) -> do
         let z = toNumber app.zoomFactor
@@ -196,7 +207,7 @@ main = do
         let viewPosNew = moveView z deltaX deltaY app.viewPos
         flip modify_ refAppState
           _ { viewPos = viewPosNew
-            , scrollDelta = Nothing
+            , translateDelta = Nothing
             }
 
         -- TODO: full redraw on gaps caused by scrolling/zooming
@@ -240,31 +251,35 @@ main = do
     app' <- read refAppState
     redrawUI app' canvasWidth canvasHeight uiCtx
 
-  onEvent gridBeat $ \_ -> do
-    flip modify_ refAppState \app ->
-      app { frameRate = round $ 1000.0 * toNumber app.frameCount / gamePeriod
-          , frameCount = 0
-          }
+  let step = do
+        width <- getCanvasWidth canvasElement
+        height <- getCanvasHeight canvasElement
+        flip modify_ refAppState \app ->
+          let widthC = width / toNumber app.zoomFactor
+              heightC = height / toNumber app.zoomFactor
+              Tuple changes gridState = advance app.gridState widthC heightC app.viewPos
+          in  app { changes = changes
+                  , gridState = gridState
+                  }
+
+  onEvent gridBeat \_ -> do
+    app <- read refAppState
+    when app.autoMode step
+    flip modify_ refAppState \a ->
+      a { frameRate = round $ 1000.0 * toNumber app.frameCount / gamePeriod
+        , frameCount = 0
+        }
 
   -- manual full redraw by pressing r key
-  keyRDown <- keyPressed keyCodeR
-  onEvent keyRDown \downUp -> when downUp $
+  onEventE (keyPressed keyCodeR) \downUp -> when downUp $
     read refAppState >>= redrawFull canvasElement ctx
 
   -- manually advance state by pressing space bar
-  spaceBarDown <- keyPressed keyCodeSpacebar
-  onEvent spaceBarDown \downUp -> when downUp $ do
-    width <- getCanvasWidth canvasElement
-    height <- getCanvasHeight canvasElement
-    flip modify_ refAppState \app ->
-      let widthC = width / toNumber app.zoomFactor
-          heightC = height / toNumber app.zoomFactor
-          Tuple changes gridState = advance app.gridState widthC heightC app.viewPos
-      in  app { changes = changes
-              , gridState = gridState
-              , frameRate = round $ 1000.0 * toNumber app.frameCount / gamePeriod
-              , frameCount = 0
-              }
+  onEventE (keyPressed keyCodeS) \downUp -> when downUp step
+
+  onEventE (keyPressed keyCodeSpacebar) \downUp -> when downUp $
+    flip modify_ refAppState $ \app ->
+      app { autoMode = not app.autoMode }
 
   onEvent sMousePos $ \{x, y} -> do
     app <- read refAppState
@@ -280,14 +295,24 @@ main = do
         mouseVX = toNumber (floor $ (toNumber x / z - widthC / 2.0 + viewX) * 10.0) / 10.0
         mouseVY = toNumber (floor $ (heightC / 2.0 - toNumber y / z + viewY) * 10.0) / 10.0
 
-    -- drag mouse to scroll
+    -- right btn press & drag mouse to scroll
     whenM (Signal.get sMouseRight) $ do
       let Tuple oldX oldY = app.mousePos
-          Tuple dx dy = fromMaybe (Tuple 0 0) app.scrollDelta
+          Tuple dx dy = fromMaybe (Tuple 0 0) app.translateDelta
       flip modify_ refAppState $
-        _ { scrollDelta = Just $ Tuple (dx + x - oldX) (dy + y - oldY) }
+        _ { translateDelta = Just $ Tuple (dx + x - oldX) (dy + y - oldY) }
 
     let gridIndex = gridX `mod` Grid.width + Grid.width * (gridY `mod` Grid.height)
+
+    -- left btn press & drag to draw cells
+    whenM (Signal.get sMouseLeft) $
+      when (gridIndex /= app.gridIndex) $ do
+        flip modify_ refAppState $ \a ->
+          let Tuple changes gridState = Grid.birthCell app.gridState gridIndex
+          in  a { changes = changes
+                , gridState = gridState
+                }
+
     flip modify_ refAppState \a ->
       a { gridPos = Tuple gridX gridY
         , mouseVPos = Tuple mouseVX mouseVY

@@ -22,7 +22,7 @@ Open `public/index.html` in browser
 
 # Develop
 
-Invoke editor from inside nix shell
+Invoke editor from inside nix shell, like this
 
 * $> nix-shell
 * $> emacs src/Main.purs
